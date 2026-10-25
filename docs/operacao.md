@@ -1,77 +1,117 @@
-# Guia de operação — opencode-notify-nodered
+# Guia de operação
+
+Uso diário, diagnóstico e manutenção do `notify-opencode`.
+
+- Arquitetura e decisões: [arquitetura.md](arquitetura.md)
+- Verdade sobre eventos (v2.1.4): [eventos.md](eventos.md)
+- Flow, canais e segurança Node-RED: [nodered.md](nodered.md)
+- Ideias futuras: [ROADMAP.md](ROADMAP.md)
 
 ## Uso diário
 
-- **`/notify`** dentro de uma sessão abre o seletor Ligado/Desligado (também na paleta de comandos: "Notificações: alternar desta sessão").
-- **`/notify off`** / **`/notify on`** setam direto.
-- O rodapé da sessão mostra 🔔 (ligadas) ou 🔔→🔕 (desligadas) para a sessão atual.
-- Toda sessão nova **nasce com notificações ligadas** — desligar em uma não afeta as outras.
+- **`/notify`** dentro de uma sessão abre o seletor Ligado/Desligado
+  (também na paleta de comandos: *"Notificações: alternar desta sessão"*);
+- **`/notify off`** / **`/notify on`** alternam direto, sem abrir o seletor;
+- o rodapé da sessão mostra **🔔** (ligadas) ou **🔕** (desligadas);
+- toda sessão nova **nasce com notificações ligadas** — desligar em uma não
+  afeta as outras;
+- sessões headless (sem TUI) ficam sempre ligadas, mas o toggle via RPC
+  continua disponível para elas.
 
-## Endpoints do Node-RED
-
-| Endpoint | Uso |
-|---|---|
-| `POST /opencode/event` | webhook do plugin (header `x-webhook-token`) |
-| `GET /opencode/events` | últimos 30 eventos processados (JSON) — checagem rápida |
-
-Checagem de última hora:
+### Checagem rápida (últimos eventos)
 
 ```sh
 curl -s http://SEU-NODE-RED:1880/opencode/events | head -c 800
 ```
 
-## Diagnóstico
+## Diagnóstico (na ordem)
 
-1. **Plugin carregou?**
-   `opencode api get /api/plugin` → deve listar `notify-nodered`.
+1. **Plugin carregado?**
+   ```sh
+   opencode api get /api/plugin | grep -c notify-nodered   # 1 (por location)
+   ```
 2. **Erros de carregamento?**
-   `grep -i "failed to load plugin" ~/.local/share/opencode/log/opencode.log`
-3. **O que o plugin enviou/pulou?**
-   Debug log: `/tmp/opencode/notify-nodered-debug.jsonl` (ligado via `options.debug: true`). Registra `send.ok`, `send.http-error`, `send.error`, `done.skipped-not-owner`, `done.suppressed-subagent`, `state.set`.
-4. **O Node-RED recebeu?**
-   `GET /opencode/events` + painel Debug do editor (nó "Evento OpenCode").
-5. **Teste com eventos falsos:** `node scripts/test-send-event.mjs`
+   ```sh
+   grep -i "failed to load plugin" ~/.local/share/opencode/log/opencode.log
+   ```
+3. **O que o plugin enviou/pulou?** Ligue `options.debug: true` e acompanhe o
+   `debugLogPath` (default `/tmp/opencode/notify-nodered-debug.jsonl`):
+   `send.ok` · `send.http-error` · `send.error` · `done.skipped-not-owner` ·
+   `done.suppressed-subagent` · `done.filtered` · `state.set` · `event.unhandled`;
+4. **O Node-RED recebeu?** `GET /opencode/events` + painel Debug do editor
+   (nó "Evento OpenCode");
+5. **Teste com eventos falsos** (não depende do OpenCode):
+   ```sh
+   npm run flow:test
+   ```
 
-## Eventos do OpenCode usados (verificados na v2.1.4)
+## Troubleshooting
 
-| Fonte | Nome | Observação |
+| Sintoma | Causa provável | Correção |
 |---|---|---|
-| stream | `session.execution.started` | marca início do turno (duração) |
-| stream | `session.execution.succeeded` | **done**; sem campo `location` — dedupe via `ctx.session.get().location` |
-| stream | `session.execution.failed` | **error**; por simetria com succeeded |
-| stream | `session.execution.interrupted` | ignorado (usuário causou) |
-| stream | `session.text.ended` | preview da última resposta |
-| hook | `tool.execute.before` (`tool === "question"`) | pergunta + opções |
-| hook | `permission.evaluate` (`effect === "ask"`) | ação + recursos aguardando aprovação |
-| sessão | `parentID` | filhos de subagentes não geram "done" |
+| Nada chega ao Node-RED | Plugin sem `token`/`url` nas options, ou falha de load | Passos 1–3 acima; confira o JSON do `opencode.jsonc` |
+| 401 no debug (`send.http-error`) | Token divergente entre plugin e flow | Troque o token (abaixo) nos dois lados |
+| `done` chega duplicado | Instâncias duplicadas por location (reload empilhado) + ownership falhou por `session.get` com erro | Confira `done.skipped-not-owner` no debug; consolide com `opencode service restart` (fora de horário de trabalho) |
+| `question` não notifica | Toggle desligado ou tool diferente de `question` | `/notify` na sessão; debug `hook.question.error` |
+| `permission` nunca notifica | **Sem regras `ask`** — a política base V2 é `allow` para tudo | Adicione regra `ask` no `opencode.jsonc` (abaixo) |
+| Notificação some quando o Node-RED reinicia | Buffer de eventos é volátil (context em memória) | Comportamento esperado; buffer persistente está no [roadmap](ROADMAP.md) |
+| Evento perdido com Node-RED fora | Sem retry no envio (v0.1) | Debug log tem o registro; fila/retry é item do [roadmap](ROADMAP.md) |
 
-Por que a deduplicação existe: o plugin é instanciado **uma vez por location carregada** e cada instância recebe o stream inteiro. Só a instância "dona" da sessão envia (checagem via `session.get().location`), com um LRU de ids em `ctx.storage` (compartilhado entre instâncias) como segunda camada. Hooks disparam uma única vez por sessão.
+## Fazendo o `permission` disparar (exemplo)
+
+Por padrão a V2 permite tudo — o gatilho só existe com regras `ask`. Exemplo
+real usado nos testes:
+
+```jsonc
+{
+  "permissions": [
+    { "action": "shell", "resource": "*", "effect": "ask" },
+    { "action": "shell", "resource": "git status *", "effect": "allow" },
+    { "action": "shell", "resource": "git diff *", "effect": "allow" }
+  ]
+}
+```
+
+Com uma permissão pendente, dá para **aprovar/rejeitar via API** (base do
+recurso "responder do celular" do roadmap):
+
+```sh
+# pendentes
+opencode api get /api/session/SEU_SESSAO/permission
+# aprovar uma vez
+opencode api post /api/session/SEU_SESSAO/permission/PERM_ID/reply --data '{"decision":"once"}'
+# decisões: once | always | reject
+```
 
 ## Trocar o token
 
-1. Edite `plugins[].options.token` no `~/.config/opencode/opencode.jsonc` (recarrega a quente).
-2. Reaplique o flow: `node scripts/apply-nodered-flow.mjs` (lê o token novo do config).
+1. Edite `plugins[].options.token` no `~/.config/opencode/opencode.jsonc`
+   (recarrega a quente);
+2. Reaplique o flow: `npm run flow:apply` (lê o token novo do config).
 
-## Atualizar o flow / o plugin
+O token é a única barreira do endpoint — não o comite e o rotacione se
+suspeitar de vazamento.
 
-- Flow: edite `nodered/flow.template.mjs` → `node scripts/apply-nodered-flow.mjs` (PUT idempotente na aba "OpenCode Notify").
-- Plugin: edite `plugin/*.ts` → `opencode api post /api/location/reload`. Recarregamentos sucessivos podem deixar instâncias duplicadas por location (inofensivo — a dedupe cobre), mas um `opencode service restart` eventual consolida. **Atenção: o restart derruba as sessões em andamento — faça sem trabalho importante rodando.**
+## Atualizar plugin e flow
 
-## Ativar um canal de notificação
-
-A saída do nó **"Registra evento"** já traz tudo formatado:
-
-- `msg.payload` → texto pronto ("✅ Título\nCorpo")
-- `msg.headers` → `Title`, `Priority` (`4` urgente / `3` alta / `default`), `Tags: opencode`
-
-**ntfy** (mais simples): habilite o nó placeholder, troque a URL por `https://ntfy.sh/<topico-aleatorio>` (o tópico é a "senha" — use uma string longa) ou self-hosted. Instale o app ntfy no celular e assine o tópico.
-
-**Telegram**: instale `node-red-contrib-telegrambot` no Node-RED e ligue um nó `telegram` na saída (precisa de bot token do @BotFather + chat ID).
-
-**Pushover**: nó `http request` POST para `https://api.pushover.net/1/messages.json` com `token` e `user` no payload.
+- **Plugin**: edite `plugin/*.ts` → `opencode api post /api/location/reload`.
+  Recarregamentos sucessivos podem empilhar instâncias duplicadas por
+  location (inofensivo — a dedupe cobre), mas um `opencode service restart`
+  eventual consolida. **Atenção: o restart derruba as sessões em andamento** —
+  faça sem trabalho importante rodando.
+- **Flow**: edite `nodered/flow.template.mjs` → `npm run flow:apply`
+  (idempotente: acha a aba pelo label e faz PUT). Commit o template e o
+  `flow.json` regenerado juntos.
+- **TUI**: mudanças em `tui.tsx` exigem **reiniciar o terminal** (a TUI carrega
+  plugins de UI na abertura).
 
 ## Segurança (pendências recomendadas)
 
-- **Node-RED sem `adminAuth`**: qualquer dispositivo da rede privada abre o editor e edita tudo. Em `settings.js` do Node-RED, configure `adminAuth` com hash bcrypt (`.node-red/.config.nodes`? não — `node-red admin` / documentação oficial) e reinicie o Node-RED.
-- O webhook já exige token (401 sem/errado), mas o tráfego na rede privada não é HTTP-auth além disso — o token é a única barreira do endpoint.
-- Se for usar ntfy.sh público, lembre que o **conteúdo** (preview/pergunta) transita pelo serviço deles. Para sensível: self-host ntfy, ou `includeQuestionText/includePreview: false` nas options.
+- **Node-RED sem `adminAuth`**: qualquer dispositivo que alcance a rede privada abre
+  o editor e edita tudo. Configure `adminAuth` (hash bcrypt) no `settings.js`
+  da máquina do Node-RED e reinicie o serviço — não dá para fazer via API;
+- o webhook já exige token (401 sem/errado), mas o tráfego na rede privada é HTTP
+  simples — o token é a única barreira do endpoint;
+- ntfy.sh público = o **conteúdo** (preview/pergunta) transita pelo serviço
+  deles. Conteúdo sensível → ntfy self-hosted ou
+  `includeQuestionText/includePreview: false` nas options.
