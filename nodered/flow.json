@@ -1,0 +1,225 @@
+[
+ {
+  "id": "aa170c01e0000001",
+  "type": "tab",
+  "label": "OpenCode Notify",
+  "disabled": false,
+  "info": "Webhook de eventos do plugin opencode-notify-nodered.\nPOST /opencode/event  — recebe eventos (question/permission/done/error)\nGET  /opencode/events — últimos 30 eventos processados\n\nPara plugar o canal de notificação (ntfy, Telegram, ...), use a saída do nó 'Registra evento': msg.payload é o texto e msg.headers já vem com Title/Priority/Tags (formato ntfy).",
+  "env": []
+ },
+ {
+  "id": "aa170c01e0000002",
+  "type": "http in",
+  "z": "aa170c01e0000001",
+  "name": "POST /opencode/event",
+  "url": "/opencode/event",
+  "method": "post",
+  "upload": false,
+  "swaggerDoc": "",
+  "x": 180,
+  "y": 100,
+  "wires": [
+   [
+    "aa170c01e0000003"
+   ]
+  ]
+ },
+ {
+  "id": "aa170c01e0000003",
+  "type": "function",
+  "z": "aa170c01e0000001",
+  "name": "Valida token + formata",
+  "func": "// Valida o token do webhook e formata o evento vindo do OpenCode.\n// Saída 1: http response | Saída 2: lane de notificação\nconst TOKEN = \"__OC_WEBHOOK_TOKEN__\";\n\nconst headers = msg.req && msg.req.headers ? msg.req.headers : {};\nif ((headers[\"x-webhook-token\"] || \"\") !== TOKEN) {\n    msg.statusCode = 401;\n    msg.payload = { error: \"unauthorized\" };\n    return [msg, null];\n}\n\nconst body = msg.payload || {};\nconst type = body.type || \"unknown\";\n\nconst meta = {\n    question:   { priority: \"high\",   icon: \"❓\", label: \"Pergunta\" },\n    permission: { priority: \"high\",   icon: \"🔐\", label: \"Permissão aguardando\" },\n    done:       { priority: \"normal\", icon: \"✅\", label: \"Terminou\" },\n    error:      { priority: \"urgent\", icon: \"❗\", label: \"Erro\" },\n}[type] || { priority: \"normal\", icon: \"🔔\", label: type };\n\nlet title = meta.label;\nlet text = \"\";\n\nif (type === \"question\") {\n    if (body.header) title = \"❓ \" + body.header;\n    text = body.question || \"(pergunta sem texto)\";\n    if (Array.isArray(body.options) && body.options.length) {\n        text += \"\\nOpções: \" + body.options.join(\", \");\n    }\n} else if (type === \"permission\") {\n    title = \"🔐 Permissão: \" + (body.action || \"ação\");\n    text = Array.isArray(body.resources) && body.resources.length\n        ? body.resources.join(\"\\n\")\n        : \"(sem detalhes)\";\n} else if (type === \"done\") {\n    if (body.title) title = \"✅ \" + body.title;\n    text = (body.preview || \"\").trim() || \"Turno concluído.\";\n    if (typeof body.durationSec === \"number\") text += \"\\n(\" + body.durationSec + \"s)\";\n} else if (type === \"error\") {\n    if (body.title) title = \"❗ \" + body.title;\n    text = (body.preview || \"\").trim() || \"Falha no turno.\";\n}\n\nmsg.notify = {\n    type: type,\n    priority: meta.priority,\n    sessionID: body.sessionID || \"\",\n    project: body.from || \"\",\n    ts: body.ts || Date.now(),\n    title: title,\n    text: text,\n    raw: body,\n};\n\nmsg.statusCode = 200;\nmsg.payload = { ok: true };\nreturn [msg, msg];",
+  "outputs": 2,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 400,
+  "y": 100,
+  "wires": [
+   [
+    "aa170c01e0000004"
+   ],
+   [
+    "aa170c01e0000005"
+   ]
+  ]
+ },
+ {
+  "id": "aa170c01e0000004",
+  "type": "http response",
+  "z": "aa170c01e0000001",
+  "name": "Resposta",
+  "statusCode": "",
+  "headers": {},
+  "x": 630,
+  "y": 60,
+  "wires": []
+ },
+ {
+  "id": "aa170c01e0000005",
+  "type": "switch",
+  "z": "aa170c01e0000001",
+  "name": "Tipo de evento",
+  "property": "msg.notify.type",
+  "propertyType": "msg",
+  "rules": [
+   {
+    "t": "eq",
+    "v": "question",
+    "vt": "str"
+   },
+   {
+    "t": "eq",
+    "v": "permission",
+    "vt": "str"
+   },
+   {
+    "t": "eq",
+    "v": "done",
+    "vt": "str"
+   },
+   {
+    "t": "eq",
+    "v": "error",
+    "vt": "str"
+   },
+   {
+    "t": "else"
+   }
+  ],
+  "checkall": "true",
+  "repair": false,
+  "outputs": 5,
+  "x": 640,
+  "y": 180,
+  "wires": [
+   [
+    "aa170c01e0000006"
+   ],
+   [
+    "aa170c01e0000006"
+   ],
+   [
+    "aa170c01e0000006"
+   ],
+   [
+    "aa170c01e0000006"
+   ],
+   [
+    "aa170c01e0000006"
+   ]
+  ]
+ },
+ {
+  "id": "aa170c01e0000006",
+  "type": "function",
+  "z": "aa170c01e0000001",
+  "name": "Registra evento",
+  "func": "// Guarda os últimos 30 eventos no flow context (memória: some ao reiniciar\n// o Node-RED) e monta o payload pronto para qualquer canal de notificação.\nconst events = flow.get(\"ocnotify:events\") || [];\nevents.unshift({\n    ts: msg.notify.ts,\n    receivedAt: Date.now(),\n    type: msg.notify.type,\n    priority: msg.notify.priority,\n    title: msg.notify.title,\n    text: String(msg.notify.text).slice(0, 300),\n    sessionID: msg.notify.sessionID,\n    project: msg.notify.project,\n});\nif (events.length > 30) events.length = 30;\nflow.set(\"ocnotify:events\", events);\n\n// Mensagem pronta para plugar um canal: ntfy, Telegram, Pushover, e-mail...\nmsg.payload = (msg.notify.title + \"\\n\" + msg.notify.text).trim();\nmsg.headers = {\n    \"Title\": String(msg.notify.title).slice(0, 250),\n    \"Priority\": msg.notify.priority === \"urgent\" ? \"4\"\n               : msg.notify.priority === \"high\" ? \"3\"\n               : \"default\",\n    \"Tags\": \"opencode\",\n};\nreturn msg;",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 860,
+  "y": 180,
+  "wires": [
+   [
+    "aa170c01e0000007",
+    "aa170c01e0000008"
+   ]
+  ]
+ },
+ {
+  "id": "aa170c01e0000007",
+  "type": "debug",
+  "z": "aa170c01e0000001",
+  "name": "Evento OpenCode",
+  "active": true,
+  "tosidebar": true,
+  "console": false,
+  "tostatus": false,
+  "complete": "notify",
+  "targetType": "msg",
+  "statusVal": "",
+  "statusType": "auto",
+  "x": 1080,
+  "y": 140,
+  "wires": []
+ },
+ {
+  "id": "aa170c01e0000008",
+  "type": "http request",
+  "z": "aa170c01e0000001",
+  "name": "CANAL ntfy (placeholder — ativar quando decidir)",
+  "method": "POST",
+  "ret": "txt",
+  "paytoqs": "ignore",
+  "url": "https://ntfy.sh/TROQUE-ESTE-TOPICO-ALEATORIO",
+  "tls": "",
+  "persist": false,
+  "proxy": "",
+  "insecureHTTPParser": false,
+  "authType": "",
+  "senderr": false,
+  "headers": [],
+  "disabled": true,
+  "x": 1120,
+  "y": 240,
+  "wires": []
+ },
+ {
+  "id": "aa170c01e0000009",
+  "type": "http in",
+  "z": "aa170c01e0000001",
+  "name": "GET /opencode/events",
+  "url": "/opencode/events",
+  "method": "get",
+  "upload": false,
+  "swaggerDoc": "",
+  "x": 180,
+  "y": 320,
+  "wires": [
+   [
+    "aa170c01e000000a"
+   ]
+  ]
+ },
+ {
+  "id": "aa170c01e000000a",
+  "type": "function",
+  "z": "aa170c01e0000001",
+  "name": "Lista últimos eventos",
+  "func": "// Devolve os últimos eventos processados (para conferência rápida).\nconst events = flow.get(\"ocnotify:events\") || [];\nmsg.payload = { count: events.length, events: events };\nmsg.statusCode = 200;\nreturn msg;",
+  "outputs": 1,
+  "timeout": 0,
+  "noerr": 0,
+  "initialize": "",
+  "finalize": "",
+  "libs": [],
+  "x": 420,
+  "y": 320,
+  "wires": [
+   [
+    "aa170c01e000000b"
+   ]
+  ]
+ },
+ {
+  "id": "aa170c01e000000b",
+  "type": "http response",
+  "z": "aa170c01e0000001",
+  "name": "Resposta (JSON)",
+  "statusCode": "",
+  "headers": {
+   "content-type": "application/json"
+  },
+  "x": 650,
+  "y": 320,
+  "wires": []
+ }
+]
