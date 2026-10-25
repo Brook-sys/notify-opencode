@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussões e dúvidas
+    url: https://github.com/Brook-sys/notify-opencode/discussions
+    about: Use as discussões para dúvidas de uso, ideas de expansão e tudo que não é bug nem proposta formal.

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    name: Validar flow e scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validação estrutural do flow (npm test)
+        run: npm test
+
+      - name: Sintaxe dos módulos (.mjs)
+        run: |
+          set -e
+          for f in scripts/*.mjs nodered/*.mjs; do
+            node --check "$f"
+            echo "ok: $f"
+          done
+
+      - name: Nenhum segredo comitado
+        run: |
+          if git grep -nE '[0-9a-f]{48}' -- . ':!*.lock'; then
+            echo "::error::possível token real (hex de 48 chars) no repositório"
+            exit 1
+          fi
+          echo "ok: nenhum padrão de token encontrado"
