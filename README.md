@@ -11,9 +11,10 @@
 
 Plugin para o [OpenCode](https://opencode.ai) (V2) que observa as sessões e
 empurra eventos de webhook para um flow [Node-RED](https://nodered.org) — que
-formata, prioriza e entrega em **qualquer canal** (ntfy, Telegram, Pushover,
-e-mail…). Cada sessão tem um **toggle de notificação próprio, ligado por
-padrão**, controlado de dentro da própria TUI do OpenCode com `/notify`.
+formata, prioriza e entrega notificações no seu **celular via ntfy**
+(Telegram/Pushover plugam na mesma saída). Cada sessão tem um **toggle de
+notificação próprio, ligado por padrão**, controlado de dentro da própria
+TUI do OpenCode com `/notify` ou um clique no 🔔/🔕 do rodapé.
 
 ## Como funciona
 
@@ -31,10 +32,10 @@ flowchart LR
         direction TB
         V["Valida token
         e formata"]
-        R["Registra + prepara canal
+        R["Registra evento
         (buffer de 30)"]
-        C["📱 ntfy / Telegram / Pushover…
-        (placeholder desabilitado)"]
+        C["📱 ntfy.sh — publicação JSON
+        (Telegram/Pushover plugam aqui)"]
     end
 
     S --> P
@@ -70,6 +71,7 @@ Testado de ponta a ponta contra OpenCode **2.1.4** + Node-RED real:
 | Token inválido | ✅ 401 |
 | Re-deploy do flow | ✅ idempotente (PUT, sem duplicar aba) |
 | TUI: comando `/notify` na paleta | ✅ verificado em pty real |
+| Entrega ntfy no tópico (celular) | ✅ 6/6 eventos — os 4 tipos, com título/ícone/prioridade corretos |
 
 Detalhes do desenho: [docs/arquitetura.md](docs/arquitetura.md).
 
@@ -88,6 +90,7 @@ Clone o repositório e registre no `~/.config/opencode/opencode.jsonc`
       "options": {
         "url": "http://SEU-NODE-RED:1880/opencode/event",
         "token": "um-token-aleatorio-bem-longo",
+        "ntfyTopic": "opencode-<hash-bem-aleatorio>",
         "debug": true
       }
     }
@@ -98,20 +101,22 @@ Clone o repositório e registre no `~/.config/opencode/opencode.jsonc`
 Confirme: `opencode api get /api/plugin | grep notify-nodered`.
 
 > Gere o token com `openssl rand -hex 24` (ou similar). Ele **nunca** é
-> comitado — o repositório usa o placeholder `__OC_WEBHOOK_TOKEN__`.
+> comitado — o repositório usa o placeholder `__OC_WEBHOOK_TOKEN__`. O tópico
+> ntfy idem: placeholder `__OC_NTFY_TOPIC__` no repo, valor real só no seu
+> `opencode.jsonc` (o nome do tópico é a "senha" do canal público).
 
 ### 2. Flow (Node-RED)
 
 ```sh
-npm run flow:apply    # deploy idempotente via API — lê o token do opencode.jsonc
+npm run flow:apply    # deploy idempotente via API — lê token e ntfyTopic do opencode.jsonc
 ```
 
-### 3. Canal de notificação
+### 3. Celular
 
-No editor do Node-RED, aba **OpenCode Notify**: habilite o nó
-**"CANAL ntfy (placeholder)"** e aponte para o seu tópico — ou ligue
-Telegram/Pushover na mesma saída (instruções passo a passo em
-[docs/nodered.md](docs/nodered.md#plugar-um-canal)).
+Instale o app [ntfy](https://ntfy.sh) e **assine o mesmo tópico** que você
+escolheu em `options.ntfyTopic` — o flow já publica nele via API JSON (emoji,
+acentos e ícone por tipo no título). Para Telegram/Pushover, veja
+[docs/nodered.md](docs/nodered.md#o-canal-de-notificação).
 
 ### 4. Teste
 
@@ -127,6 +132,8 @@ Depois rode um turno real no OpenCode e confira
 
 ## Uso
 
+- Os eventos chegam como **notificações no celular** (ntfy): ✅ terminou,
+  ❓ pergunta, 🔐 permissão aguardando, ❗ erro — com prioridade e ícone por tipo;
 - **Clique no 🔔/🔕 do rodapé** da sessão → alterna as notificações dela na
   hora; o ícone troca sozinho e um toast confirma (🔔 ligadas / 🔕 desligadas);
 - **`/notify`** na sessão → seletor 🔔 Ligadas / 🔕 Desligadas (ou `/notify on|off`);
@@ -143,6 +150,7 @@ Depois rode um turno real no OpenCode e confira
 |---|---|---|
 | `url` | `http://SEU-NODE-RED:1880/opencode/event` | URL do webhook (troque pro seu) |
 | `token` | env `OPENCODE_NOTIFY_TOKEN` | Enviado no header `x-webhook-token` |
+| `ntfyTopic` | — | Tópico ntfy do canal. ⚠️ Não é lido pelo plugin em runtime — o `npm run flow:apply` injeta no flow no deploy |
 | `minDurationSec` | `0` | Suprime `done` mais curto que N segundos |
 | `includePreview` | `true` | Inclui preview da última resposta no `done` |
 | `includeQuestionText` | `true` | Inclui texto da pergunta no `question` |
@@ -195,8 +203,14 @@ docs/                 Documentação por área
 
 ## Segurança
 
-- O token do webhook nunca é comitado (placeholder no repositório, valor real
+- O token do webhook e o tópico ntfy **nunca são comitados** (placeholders
+  `__OC_WEBHOOK_TOKEN__` e `__OC_NTFY_TOPIC__` no repositório; valores reais
   só no `opencode.jsonc` e no flow deployado);
+- **no ntfy.sh público, o nome do tópico é a "senha"**: quem souber o nome lê
+  as notificações (títulos/previews das suas sessões) e publica no seu lugar.
+  Use um tópico longo e aleatório, rotacione se suspeitar de vazamento
+  (troque no `opencode.jsonc` + `npm run flow:apply` + reassine no celular)
+  ou rode ntfy self-hosted com auth;
 - **configure `adminAuth` no Node-RED** — o editor aberto na rede privada é
   superfície de ataque (veja [docs/operacao.md](docs/operacao.md#segurança-pendências-recomendadas));
 - conteúdo sensível no preview/pergunta? Prefira ntfy self-hosted ao ntfy.sh

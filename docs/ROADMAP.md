@@ -6,10 +6,12 @@ destes itens são bem-vindas (veja [CONTRIBUTING](../CONTRIBUTING.md)).
 
 ## Curto prazo
 
-### 1. Canal de notificação real 📱 (decisão pendente)
-O pipeline está pronto e o nó placeholder ntfy já existe — falta decidir o
-canal (ntfy.sh, ntfy self-hosted, Telegram, Pushover) e habilitar. Ver
-[docs/nodered.md](nodered.md#plugar-um-canal).
+### 1. Canal de notificação real 📱 ✅ (feito na 0.2.1)
+
+Entregue via **ntfy.sh** (publicação JSON: título/ícone/prioridade no corpo,
+tópico injetado no deploy por `options.ntfyTopic`). Melhorias que restam no
+tema: ntfy self-hosted com auth e canais alternativos (Telegram/Pushover) —
+ver [docs/nodered.md](nodered.md#o-canal-de-notificação).
 
 ### 2. Fila/retry de eventos
 Hoje o envio é fire-and-forget: Node-RED fora no momento do evento = evento

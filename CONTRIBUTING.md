@@ -67,7 +67,8 @@ ou pela variável de ambiente `NODE_RED_URL`.
 - [ ] teste ao vivo: rode um turno real e confirme o evento em
       `GET /opencode/events` (e nenhum evento duplicado);
 - [ ] nenhum segredo no diff — o token real do webhook **nunca** é comitado
-      (o template usa `__OC_WEBHOOK_TOKEN__` como placeholder);
+      (o template usa `__OC_WEBHOOK_TOKEN__` e `__OC_NTFY_TOPIC__` como
+      placeholders — valores reais vêm do `opencode.jsonc` no deploy);
 - [ ] documentação atualizada quando o comportamento mudar.
 
 ## Segurança

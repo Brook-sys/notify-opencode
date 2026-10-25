@@ -22,8 +22,8 @@ flowchart LR
         V["Valida token + formata"]
         SW["Roteia por tipo"]
         R["Registra evento (buffer 30)"]
-        C["CANAL — ntfy / Telegram / Pushover …
-        (placeholder desabilitado)"]
+        C["📱 ntfy.sh — publicação JSON
+        (título/ícone/prioridade no corpo)"]
         E["GET /opencode/events"]
     end
 

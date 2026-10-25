@@ -16,8 +16,9 @@ Notify") e atualizada via `PUT /flow/{id}` — rodar duas vezes não duplica nad
 O token real é injetado na hora (`__OC_WEBHOOK_TOKEN__` → valor do
 `opencode.jsonc`) e **nunca vai para o repositório**.
 
-Alternativa manual: `nodered/flow.json` (gerado, com placeholder) → editor →
-Menu → Import → substituir o placeholder pelo token real.
+Alternativa manual: `nodered/flow.json` (gerado, com placeholders) → editor →
+Menu → Import → substituir `__OC_WEBHOOK_TOKEN__` pelo token real e
+`__OC_NTFY_TOPIC__` pelo seu tópico ntfy.
 
 ## Endpoints
 
@@ -38,9 +39,9 @@ curl -s http://SEU-NODE-RED:1880/opencode/events | head -c 800
 | `Valida token + formata` | 401 se o header `x-webhook-token` não bater; monta `msg.notify` com prioridade/ícone/título/texto; saída 1 = resposta 200, saída 2 = lane de notificação |
 | `Resposta` | Devolve `{"ok":true}` ao plugin |
 | `Tipo de evento` | Switch por `msg.notify.type` (question/permission/done/error) — pronto para rotear tipos por canais diferentes |
-| `Registra evento` | Guarda no buffer (flow context, últimos 30) e monta `msg.payload` + `msg.headers` prontos para canal |
+| `Registra evento` | Guarda no buffer (flow context, últimos 30) e monta a publicação JSON do ntfy (`topic`, `title`, `message`, `priority`, `tags`) |
 | `Evento OpenCode` (debug) | Mostra `msg.notify` no painel Debug do editor |
-| `CANAL ntfy (placeholder)` | Nó `http request` **desabilitado** — troque a URL pelo seu tópico e habilite |
+| `CANAL ntfy (ntfy.sh)` | Nó `http request` **habilitado** — POST do JSON em `https://ntfy.sh/`; o tópico vai no corpo (injetado no deploy a partir de `options.ntfyTopic`) |
 | `GET /opencode/events` + `Lista últimos eventos` | Consulta do buffer |
 
 ## `msg.notify` (schema interno)
@@ -58,11 +59,18 @@ curl -s http://SEU-NODE-RED:1880/opencode/events | head -c 800
 }
 ```
 
-Na saída de **Registra evento**, o canal recebe:
+Na saída de **Registra evento**, o canal ntfy recebe a publicação pronta —
+API JSON do ntfy (`POST https://ntfy.sh/`):
 
-- `msg.payload` → `"✅ título\ncorpo"` (texto pronto);
-- `msg.headers` → `Title` (título), `Priority` (`4` urgente, `3` alta,
-  `default`), `Tags: opencode` — formato **ntfy** de cara.
+- `msg.payload` → JSON `{"topic","title","message","priority","tags"}` —
+  emoji, acentos e multiline vão no corpo (headers HTTP não aceitam nada
+  além de Latin-1; o antigo formato via `Title` header quebrava com emoji:
+  `invalid character in header content`);
+- `msg.headers` → apenas `Content-Type: application/json`;
+- `priority` → `5` urgente (erro), `4` alta (pergunta/permissão), `3` normal
+  (terminou);
+- `tags` → `opencode` + ícone por tipo (`question`, `lock`,
+  `white_check_mark`, `warning`) — o app ntfy renderiza como emoji.
 
 ## Exemplos de payload (o que chega no webhook)
 
@@ -80,36 +88,48 @@ Na saída de **Registra evento**, o canal recebe:
 { "type": "error", "sessionID": "ses_…", "title": "refatorar auth", "preview": "…", "from": "…", "ts": … }
 ```
 
-## Plugar um canal
+## O canal de notificação
 
-### ntfy (o mais simples)
+### ntfy (plugado e habilitado)
+
+O flow já publica no **ntfy.sh via API JSON** — não há nada para habilitar.
+Falta só dizer o tópico (e assiná-lo no celular):
 
 1. Instale o app ntfy no celular;
-2. No flow, habilite o nó **"CANAL ntfy (placeholder — ativar quando decidir)"**
-   e troque a URL: `https://ntfy.sh/<topico-bem-aleatorio>` (o tópico é a
-   "senha") ou o seu ntfy self-hosted;
-3. Assine o tópico no app. Pronto — `msg.headers` já está no formato ntfy
-   (`Title`, `Priority`, `Tags`).
+2. Escolha o tópico em `plugins[].options.ntfyTopic` do
+   `~/.config/opencode/opencode.jsonc` — nome **longo e aleatório**
+   (ex.: `opencode-a7x2k9m4…`);
+3. Rode `npm run flow:apply` para implantar com o tópico real;
+4. No app, assine o mesmo tópico. Pronto.
 
-> Conteúdo sensível? Prefira ntfy self-hosted: com o ntfy.sh público, o
-> preview/pergunta transita pelo serviço deles.
+> **O tópico é a "senha"**: no ntfy.sh público, quem souber o nome do tópico
+> pode ler as notificações (títulos e previews das suas sessões de IA) e
+> publicar no seu lugar. Prefira um nome longo e aleatório
+> (`opencode-x7k2m9p4qz…`) ou rode ntfy self-hosted com auth. Conteúdo
+> sensível no preview? Idem — self-hosted.
+
+> Por que API JSON e não headers? Valores de header HTTP só aceitam Latin-1:
+> emoji (✅❓🔐❗) no `Title` faz o Node recusar o request inteiro com
+> `invalid character in header content`. No corpo JSON, tudo é permitido.
 
 ### Telegram
 
 Instale `node-red-contrib-telegrambot` no Node-RED (bot do @BotFather + chat
-ID) e ligue um nó `telegram` na saída de **Registra evento**. Configure
-`msg.payload` como texto da mensagem (já vem pronto).
+ID) e ligue um nó `telegram` na saída de **Registra evento**, com um nó
+`change` no meio montando o texto — o payload de saída é o **JSON do ntfy**,
+não texto puro:
+`msg.payload = msg.notify.title + "\n" + msg.notify.text`.
 
 ### Pushover
 
-Nó `http request` → `POST https://api.pushover.net/1/messages.json` com
-`token` + `user` no payload.
+Nó `function` + `http request` → `POST https://api.pushover.net/1/messages.json`
+montando `token` + `user` + `message` a partir de `msg.notify`.
 
 ### E-mail / outros
 
-Qualquer nó que consuma `msg.payload`/`msg.headers` serve. O switch
-**"Tipo de evento"** permite mandar `error` para um canal urgente e `done`
-para um silencioso.
+Qualquer canal que consuma `msg.notify` (title/text/priority/type) serve —
+monte o corpo do seu lado. O switch **"Tipo de evento"** permite mandar
+`error` para um canal urgente e `done` para um silencioso.
 
 ## Segurança
 

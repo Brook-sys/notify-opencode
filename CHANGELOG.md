@@ -5,6 +5,52 @@ Todas as mudanças relevantes deste projeto ficam documentadas neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.2.1] — 2026-10-25
+
+O canal ntfy sai do placeholder e entrega de verdade — com a correção de um
+bug empírico no caminho: publicar via headers HTTP quebrava **100%** das
+notificações.
+
+### Corrigido
+
+- **`invalid character in header content` no nó ntfy**: a publicação usava
+  headers HTTP (`Title`, `Priority`, `Tags`) e todo título começa com emoji
+  (✅❓🔐❗). Valores de header HTTP só aceitam Latin-1, então o Node recusava
+  o request inteiro para **qualquer** evento (reprodução isolada: POST direto
+  ao ntfy.sh com emoji no `Title` → `TypeError … value of 9989 … greater than
+  255`; ASCII puro → 200 entregue). Migração para a **API JSON do ntfy**
+  (`POST https://ntfy.sh/` com `topic`/`title`/`message`/`priority`/`tags`
+  no corpo) — emoji, acentos e multiline no título funcionam.
+
+### Adicionado
+
+- **Prioridades numéricas** (erro → 5/urgente, pergunta e permissão → 4/alta,
+  `done` → 3/normal) e **tags** (`opencode` + ícone por tipo: `question`,
+  `lock`, `white_check_mark`, `warning`) — o app ntfy renderiza como emoji;
+- **`ntfyTopic` como opção de deploy** (`plugins[].options` no
+  `opencode.jsonc`): o `flow:apply` injeta o valor no lugar do placeholder
+  `__OC_NTFY_TOPIC__` — o tópico nunca é comitado, como o token (o validador
+  do `npm test` passou a exigir exatamente 1 ocorrência do placeholder e nó
+  apontando para a raiz da API JSON, `POST`);
+- Nó **"CANAL ntfy (ntfy.sh)" sai habilitado** por padrão no template — não
+  há mais nada para ativar à mão no editor.
+
+### Verificado ao vivo
+
+- 6 entregas ao tópico conferidas via `https://ntfy.sh/<topico>/json`:
+  4 eventos falsos (um de cada tipo, com prioridades/tags corretas) + 2
+  pós-redeploy do template — o template é a fonte única e o patch manual da
+  instância não sobrevive como estado necessário.
+
+### Fragilidades conhecidas
+
+- ntfy.sh público: **o nome do tópico é a "senha"** — quem souber o nome lê
+  as notificações (títulos/previews das sessões) e publica no seu lugar.
+  Use um tópico longo e aleatório, rotacione em caso de suspeita, ou rode
+  ntfy self-hosted com auth;
+- sem retry em direção ao ntfy: se o ntfy.sh estiver fora no momento do
+  evento, a publicação se perde (fica no buffer local, sem reenvio).
+
 ## [0.2.0] — 2026-10-25
 
 O ícone do rodapé virou o controle principal: **um clique alterna as

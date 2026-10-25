@@ -38,13 +38,19 @@ function readPluginToken() {
   const entry = (config.plugins ?? []).find(
     (plugin) => typeof plugin === "object" && String(plugin.package ?? "").includes("opencode-notify-nodered"),
   )
-  return entry?.options?.token
+  return { token: entry?.options?.token, ntfyTopic: entry?.options?.ntfyTopic }
 }
 
-const token = readPluginToken()
+const { token, ntfyTopic } = readPluginToken()
 if (!token) {
   console.error("Token não encontrado em ~/.config/opencode/opencode.jsonc (plugins[].options.token)")
   process.exit(1)
+}
+if (!ntfyTopic) {
+  console.warn(
+    "AVISO: plugins[].options.ntfyTopic ausente — o flow será implantado com o placeholder __OC_NTFY_TOPIC__ " +
+      "(as notificações NÃO serão entregues até configurar um tópico real).",
+  )
 }
 
 const tab = flowNodes.find((node) => node.type === "tab")
@@ -58,11 +64,15 @@ if (!tab || tab.id !== TAB_ID) {
 writeFileSync(join(repoRoot, "nodered", "flow.json"), JSON.stringify(flowNodes, null, 1) + "\n")
 console.log("nodered/flow.json atualizado (placeholder de token, seguro para commit)")
 
-// 2) Prepara o corpo do deploy com o token real
+// 2) Prepara o corpo do deploy com o token real e o tópico real
+const substitute = (func) =>
+  func
+    ? func.replace("__OC_WEBHOOK_TOKEN__", token).replace("__OC_NTFY_TOPIC__", ntfyTopic ?? "__OC_NTFY_TOPIC__")
+    : func
 const deployBody = {
   id: TAB_ID,
   label: tab.label,
-  nodes: nodes.map((node) => ({ ...node, func: node.func ? node.func.replace("__OC_WEBHOOK_TOKEN__", token) : node.func })),
+  nodes: nodes.map((node) => ({ ...node, func: substitute(node.func) })),
   configs: [],
 }
 

@@ -9,7 +9,10 @@
  *   - os dois endpoints esperados (POST /opencode/event, GET /opencode/events);
  *   - o placeholder __OC_WEBHOOK_TOKEN__ presente (exatamente 1×) e nenhum
  *     token real (hex de 48 chars) esquecido no template;
- *   - o nó ntfy placeholder presente e DESABILITADO;
+ *   - o nó ntfy presente, HABILITADO e apontando para a raiz da API JSON
+ *     (https://ntfy.sh/) — título/tags vão no corpo, não em headers;
+ *   - o placeholder __OC_NTFY_TOPIC__ presente (exatamente 1×) na função
+ *     "Registra evento" — o tópico é segredo de deploy, como o token;
  *   - nodered/flow.json (artefato gerado) em sincronia com o template.
  */
 import { readFileSync } from "node:fs"
@@ -59,13 +62,24 @@ ok(
   "possível token real (hex de 48 caracteres) encontrado no template — NÃO comitar segredos!",
 )
 
-// --- nó de canal placeholder --------------------------------------------------
-const ntfy = flowNodes.find((node) => node.type === "http request" && /ntfy/i.test(String(node.url ?? "")))
-ok(!!ntfy, "nó ntfy placeholder ausente (saída de canal do flow)")
-ok(ntfy?.disabled === true, "o nó ntfy placeholder deve vir desabilitado por padrão")
+// --- nó de canal ntfy ----------------------------------------------------------
+// Acha pela URL raiz da API JSON (o tópico não vai mais na URL — vai no corpo).
+const ntfy = flowNodes.find((node) => node.type === "http request" && /ntfy/i.test(String(node.name ?? "")))
+ok(!!ntfy, "nó ntfy ausente (saída de canal do flow)")
+ok(ntfy?.disabled === true || ntfy?.disabled === undefined, "o nó ntfy deve vir habilitado (sem flag disabled)")
+ok(ntfy?.url === "https://ntfy.sh/", `o nó ntfy deve apontar para a raiz da API JSON (https://ntfy.sh/) — achei ${ntfy?.url}`)
 ok(
-  String(ntfy?.url ?? "").includes("TROQUE-ESTE-TOPICO"),
-  "a URL do nó ntfy deve continuar placeholder (TROQUE-ESTE-TOPICO…)",
+  ntfy?.method === "POST",
+  `o nó ntfy deve ser POST (publicação JSON) — achei ${ntfy?.method}`,
+)
+
+// --- placeholder do tópico ntfy (segredo de deploy, como o token) -------------
+const recordFunc = flowNodes.find((node) => node.name === "Registra evento")?.func ?? ""
+const topicCount = (recordFunc.match(/__OC_NTFY_TOPIC__/g) ?? []).length
+ok(topicCount === 1, `placeholder __OC_NTFY_TOPIC__ deve aparecer 1× na função Registra evento (achei ${topicCount})`)
+ok(
+  recordFunc.includes('"Content-Type": "application/json"') && recordFunc.includes("JSON.stringify"),
+  "a função Registra evento deve publicar via corpo JSON (headers HTTP não aceitam emoji)",
 )
 
 // --- corpos de função ---------------------------------------------------------

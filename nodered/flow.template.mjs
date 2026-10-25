@@ -73,7 +73,7 @@ msg.payload = { ok: true };
 return [msg, msg];`
 
 const recordFunc = `// Guarda os últimos 30 eventos no flow context (memória: some ao reiniciar
-// o Node-RED) e monta o payload pronto para qualquer canal de notificação.
+// o Node-RED) e monta a notificação para o canal ntfy.
 const events = flow.get("ocnotify:events") || [];
 events.unshift({
     ts: msg.notify.ts,
@@ -88,15 +88,27 @@ events.unshift({
 if (events.length > 30) events.length = 30;
 flow.set("ocnotify:events", events);
 
-// Mensagem pronta para plugar um canal: ntfy, Telegram, Pushover, e-mail...
-msg.payload = (msg.notify.title + "\\n" + msg.notify.text).trim();
-msg.headers = {
-    "Title": String(msg.notify.title).slice(0, 250),
-    "Priority": msg.notify.priority === "urgent" ? "4"
-               : msg.notify.priority === "high" ? "3"
-               : "default",
-    "Tags": "opencode",
+// Canal ntfy: publica pela API JSON (POST https://ntfy.sh/ com corpo JSON).
+// Headers HTTP não aceitam nada além de Latin-1 — emoji no header "Title"
+// faz o Node recusar o request ("invalid character in header content").
+// No corpo JSON, emoji e acentos são bem-vindos.
+// O tópico é preenchido pelo script de deploy a partir do placeholder reservado.
+const NTFY_TOPIC = "__OC_NTFY_TOPIC__";
+const NTFY_PRIORITY = { urgent: 5, high: 4, normal: 3 };
+const NTFY_TAG = {
+    question: "question",
+    permission: "lock",
+    done: "white_check_mark",
+    error: "warning",
 };
+msg.headers = { "Content-Type": "application/json" };
+msg.payload = JSON.stringify({
+    topic: NTFY_TOPIC,
+    title: String(msg.notify.title).slice(0, 250),
+    message: String(msg.notify.text).slice(0, 1900),
+    priority: NTFY_PRIORITY[msg.notify.priority] ?? 3,
+    tags: ["opencode", NTFY_TAG[msg.notify.type]].filter(Boolean),
+});
 return msg;`
 
 const listFunc = `// Devolve os últimos eventos processados (para conferência rápida).
@@ -111,7 +123,7 @@ export const flowNodes = [
     type: "tab",
     label: "OpenCode Notify",
     disabled: false,
-    info: "Webhook de eventos do plugin opencode-notify-nodered.\nPOST /opencode/event  — recebe eventos (question/permission/done/error)\nGET  /opencode/events — últimos 30 eventos processados\n\nPara plugar o canal de notificação (ntfy, Telegram, ...), use a saída do nó 'Registra evento': msg.payload é o texto e msg.headers já vem com Title/Priority/Tags (formato ntfy).",
+    info: "Webhook de eventos do plugin opencode-notify-nodered.\nPOST /opencode/event  — recebe eventos (question/permission/done/error)\nGET  /opencode/events — últimos 30 eventos processados\n\nCanal ntfy: o nó 'Registra evento' publica pela API JSON do ntfy\n(POST https://ntfy.sh/ com topic/title/message/priority/tags no corpo).\nO tópico vem de options.ntfyTopic no opencode.jsonc, via script de deploy.",
     env: [],
   },
   {
@@ -218,11 +230,11 @@ export const flowNodes = [
     id: "aa170c01e0000008",
     type: "http request",
     z: TAB_ID,
-    name: "CANAL ntfy (placeholder — ativar quando decidir)",
+    name: "CANAL ntfy (ntfy.sh)",
     method: "POST",
     ret: "txt",
     paytoqs: "ignore",
-    url: "https://ntfy.sh/TROQUE-ESTE-TOPICO-ALEATORIO",
+    url: "https://ntfy.sh/",
     tls: "",
     persist: false,
     proxy: "",
@@ -230,7 +242,6 @@ export const flowNodes = [
     authType: "",
     senderr: false,
     headers: [],
-    disabled: true,
     x: 1120,
     y: 240,
     wires: [],

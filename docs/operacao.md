@@ -18,7 +18,11 @@ Uso diário, diagnóstico e manutenção do `notify-opencode`.
 - toda sessão nova **nasce com notificações ligadas** — desligar em uma não
   afeta as outras;
 - sessões headless (sem TUI) ficam sempre ligadas, mas o toggle via RPC
-  continua disponível para elas.
+  continua disponível para elas;
+- os eventos viram **notificações no celular via ntfy** (✅ terminou, ❓
+  pergunta, 🔐 permissão, ❗ erro), com prioridade e ícone por tipo. O tópico
+  é o `options.ntfyTopic` do `opencode.jsonc` — o app ntfy no celular precisa
+  assinar o **mesmo** tópico.
 
 > Detalhe: se você alternar muito rápido (menos de ~2,5 s entre um clique e
 > outro), só o primeiro toast aparece — o OpenCode não desenha um toast por
@@ -29,6 +33,13 @@ Uso diário, diagnóstico e manutenção do `notify-opencode`.
 
 ```sh
 curl -s http://SEU-NODE-RED:1880/opencode/events | head -c 800
+```
+
+Do lado do celular (o que o ntfy de fato recebeu) — uma linha JSON por
+mensagem entregue:
+
+```sh
+curl -s "https://ntfy.sh/SEU-TOPICO/json?poll=1&since=5m"
 ```
 
 ## Diagnóstico (na ordem)
@@ -61,6 +72,7 @@ curl -s http://SEU-NODE-RED:1880/opencode/events | head -c 800
 | `done` chega duplicado | Instâncias duplicadas por location (reload empilhado) + ownership falhou por `session.get` com erro | Confira `done.skipped-not-owner` no debug; consolide com `opencode service restart` (fora de horário de trabalho) |
 | `question` não notifica | Toggle desligado ou tool diferente de `question` | `/notify` na sessão; debug `hook.question.error` |
 | `permission` nunca notifica | **Sem regras `ask`** — a política base V2 é `allow` para tudo | Adicione regra `ask` no `opencode.jsonc` (abaixo) |
+| Nada chega no celular (mas chega no Node-RED) | Tópico divergente entre `options.ntfyTopic` e a assinatura do app, ou ntfy.sh fora do ar | Confira o tópico dos dois lados; cheque com o `curl` do tópico acima; reimplante com `npm run flow:apply` |
 | Notificação some quando o Node-RED reinicia | Buffer de eventos é volátil (context em memória) | Comportamento esperado; buffer persistente está no [roadmap](ROADMAP.md) |
 | Evento perdido com Node-RED fora | Sem retry no envio (v0.1) | Debug log tem o registro; fila/retry é item do [roadmap](ROADMAP.md) |
 
