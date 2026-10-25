@@ -148,7 +148,7 @@ Depois rode um turno real no OpenCode e confira
 
 | Opção | Padrão | Descrição |
 |---|---|---|
-| `url` | `http://SEU-NODE-RED:1880/opencode/event` | URL do webhook (troque pro seu) |
+| `url` | `http://localhost:1880/opencode/event` | URL do webhook (troque pro seu Node-RED — os scripts derivam a base daqui) |
 | `token` | env `OPENCODE_NOTIFY_TOKEN` | Enviado no header `x-webhook-token` |
 | `ntfyTopic` | — | Tópico ntfy do canal. ⚠️ Não é lido pelo plugin em runtime — o `npm run flow:apply` injeta no flow no deploy |
 | `minDurationSec` | `0` | Suprime `done` mais curto que N segundos |
@@ -211,8 +211,9 @@ docs/                 Documentação por área
   Use um tópico longo e aleatório, rotacione se suspeitar de vazamento
   (troque no `opencode.jsonc` + `npm run flow:apply` + reassine no celular)
   ou rode ntfy self-hosted com auth;
-- **configure `adminAuth` no Node-RED** — o editor aberto na rede privada é
-  superfície de ataque (veja [docs/operacao.md](docs/operacao.md#segurança-pendências-recomendadas));
+- **configure `adminAuth` no Node-RED** — sem ele, qualquer dispositivo que
+  alcançar o editor edita seus flows
+  (veja [docs/operacao.md](docs/operacao.md#segurança-pendências-recomendadas));
 - conteúdo sensível no preview/pergunta? Prefira ntfy self-hosted ao ntfy.sh
   público.
 

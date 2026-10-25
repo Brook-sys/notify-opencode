@@ -138,8 +138,8 @@ monte o corpo do seu lado. O switch **"Tipo de evento"** permite mandar
 2. **`adminAuth` no Node-RED** — sem ele, qualquer dispositivo que alcance o
    editor edita seus flows. Configure no `settings.js` da máquina do Node-RED
    (hash bcrypt + reinício do serviço). Isso não pode ser feito pela API;
-3. **Exposição** — mantenha o Node-RED acessível só pela rede privada/rede
-   confiável; o endpoint aceita HTTP simples;
+3. **Exposição** — mantenha o Node-RED acessível só pela sua rede privada/VPN;
+   o endpoint aceita HTTP simples;
 4. **Tópicos ntfy públicos** — trate o nome do tópico como segredo.
 
 ## Manutenção do flow

@@ -65,7 +65,7 @@ export default Plugin.define({
   id: "notify-nodered",
   async setup(ctx) {
     const options = (ctx.options ?? {}) as Options
-    const url = options.url ?? "http://SEU-NODE-RED:1880/opencode/event"
+    const url = options.url ?? "http://localhost:1880/opencode/event"
     const token = options.token ?? process.env.OPENCODE_NOTIFY_TOKEN ?? ""
     const includePreview = options.includePreview !== false
     const includeQuestionText = options.includeQuestionText !== false

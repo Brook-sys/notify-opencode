@@ -70,8 +70,8 @@ Fatos verificados na 2.1.4 que definiram o desenho:
 
 ```mermaid
 sequenceDiagram
-    participant S1 as Instância /home/SEU-USUARIO
-    participant S2 as Instância /home/SEU-USUARIO/projeto
+    participant S1 as Instância ~/projeto-a
+    participant S2 as Instância ~/projeto-a/sub
     participant ST as ctx.storage (compartilhado)
     participant NR as Node-RED
 

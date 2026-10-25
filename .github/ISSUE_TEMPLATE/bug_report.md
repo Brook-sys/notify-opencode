@@ -8,7 +8,7 @@ labels: ["bug"]
 ## Contexto
 
 - Versão do OpenCode: <!-- ex.: 2.1.4 — `opencode --version` -->
-- Como o Node-RED é alcançado: <!-- ex.: mesma máquina / Tailscale / host:porta -->
+- Como o Node-RED é alcançado: <!-- ex.: mesma máquina / rede privada / host:porta -->
 - Canal de notificação ativo: <!-- ntfy / Telegram / nenhum ainda -->
 
 ## O que aconteceu

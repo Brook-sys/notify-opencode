@@ -7,8 +7,8 @@ ambiente, os comandos e o processo para contribuir.
 
 - **OpenCode V2** (desenvolvido e verificado na 2.1.4) rodando como serviço local;
 - **Node.js ≥ 18** (os scripts usam `fetch` global — não há dependências npm);
-- um **Node-RED** alcançável pela rede (no projeto original: outra máquina na
-  rede privada Tailscale).
+- um **Node-RED** alcançável pela sua rede (o endereço fica no seu
+  `opencode.jsonc` — nada pessoal vem no repositório).
 
 ## Setup
 
@@ -33,10 +33,26 @@ npm test              # validação estrutural do template do flow
 | `npm run flow:apply` | Aplica/atualiza a aba "OpenCode Notify" no Node-RED (via API) |
 | `npm run flow:test` | Envia eventos falsos dos 4 tipos + token inválido (401) e lista o buffer |
 | `npm run flow:validate` | Valida a estrutura do template do flow (executado pelo CI) |
-| `npm test` | Alias de `flow:validate` |
+| `npm test` | Validação do flow + varredura de higiene de dados pessoais |
 
-A URL do Node-RED pode ser passada como argumento (`npm run flow:apply -- http://host:1880`)
-ou pela variável de ambiente `NODE_RED_URL`.
+A URL do Node-RED pode ser passada como argumento (`npm run flow:apply -- http://host:1880`),
+pela variável de ambiente `NODE_RED_URL` — ou fica implícita: os scripts
+derivam a origem de `plugins[].options.url` no `opencode.jsonc`.
+
+## Higiene: o repo é público, o seu ambiente não
+
+Nada que descreva **o seu** setup vai para o repositório: endereços IP
+internos (inclusive faixas de VPN), caminhos de home com seu usuário, nomes
+de host, topologia de rede ou estado da sua infraestrutura. A documentação
+usa placeholders genéricos (`SEU-NODE-RED`, `SEU-USUARIO`).
+
+- Anotações do seu ambiente (IP real, máquina, procedimentos específicos)
+  vão em `LOCAL.md` — está no `.gitignore` e nunca é comitado;
+- `npm test` também roda `scripts/check-hygiene.mjs`, que reprova o commit
+  se achar IP de faixa privada de VPN, caminho `/home/<usuário>`, ID de
+  sessão real ou menção a topologia de rede específica;
+- valores por instalação (token, tópico ntfy, URL do Node-RED) vivem no
+  `opencode.jsonc` e só entram no flow no deploy (placeholders no repo).
 
 ## Onde mexer
 
@@ -69,6 +85,8 @@ ou pela variável de ambiente `NODE_RED_URL`.
 - [ ] nenhum segredo no diff — o token real do webhook **nunca** é comitado
       (o template usa `__OC_WEBHOOK_TOKEN__` e `__OC_NTFY_TOPIC__` como
       placeholders — valores reais vêm do `opencode.jsonc` no deploy);
+- [ ] nenhum detalhe pessoal/ambiental no diff (IPs internos, caminho de
+      home, topologia de rede) — `npm test` varre, mas confira com seus olhos;
 - [ ] documentação atualizada quando o comportamento mudar.
 
 ## Segurança

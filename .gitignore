@@ -8,5 +8,9 @@ node_modules/
 # Logs e artefatos locais
 *.log
 
+# Notas do ambiente local — detalhes pessoais nunca vão para o repo
+LOCAL.md
+docs/local/
+
 # SO
 .DS_Store

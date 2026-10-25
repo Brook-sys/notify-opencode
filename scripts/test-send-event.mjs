@@ -14,8 +14,6 @@ import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
-const base = process.env.NODE_RED_URL ?? process.argv[2] ?? "http://SEU-NODE-RED:1880"
-
 function readPluginToken() {
   const configPath = join(homedir(), ".config", "opencode", "opencode.jsonc")
   const raw = readFileSync(configPath, "utf8")
@@ -28,14 +26,18 @@ function readPluginToken() {
   const entry = (config.plugins ?? []).find(
     (plugin) => typeof plugin === "object" && String(plugin.package ?? "").includes("opencode-notify-nodered"),
   )
-  return entry?.options?.token
+  return { token: entry?.options?.token, url: entry?.options?.url }
 }
 
-const token = readPluginToken()
+const { token, url: webhookUrl } = readPluginToken()
 if (!token) {
   console.error("Token não encontrado em ~/.config/opencode/opencode.jsonc")
   process.exit(1)
 }
+
+// Mesma precedência do flow:apply — env NODE_RED_URL > argumento > origem
+// de plugins[].options.url no opencode.jsonc > localhost.
+const base = process.env.NODE_RED_URL ?? process.argv[2] ?? (webhookUrl ? new URL(webhookUrl).origin : "http://localhost:1880")
 
 const send = async (payload, useToken) => {
   const res = await fetch(`${base}/opencode/event`, {

@@ -5,6 +5,35 @@ Todas as mudanças relevantes deste projeto ficam documentadas neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.2.2] — 2026-10-25
+
+O repositório é público e é produto para terceiros — ele não deve descrever o
+ambiente de quem desenvolve. Removidos os detalhes pessoais que tinham vazado
+para docs e defaults: endereço IP interno de rede privada, caminho de home
+com usuário real e menções ao estado da infraestrutura do autor.
+
+### Corrigido
+
+- **Nenhum endereço pessoal como default**: o plugin passa a assumir
+  `http://localhost:1880/opencode/event` quando `options.url` não é
+  informado; `flow:apply` e `flow:test` passam a derivar a URL do Node-RED
+  da **origem** de `plugins[].options.url` do `opencode.jsonc` (precedência:
+  env `NODE_RED_URL` > argumento > config > localhost). Para quem já tem
+  `options.url` configurada, nada muda no dia a dia;
+- **documentação 100% genérica**: exemplos com `SEU-NODE-RED` e
+  `SEU-USUARIO`; conselhos de segurança (`adminAuth`, rede privada) sem
+  revelar o estado da infraestrutura de ninguém.
+
+### Adicionado
+
+- **`scripts/check-hygiene.mjs`** (roda no `npm test`, logo no CI): reprova
+  o commit se achar IP em faixa CGNAT/VPN (RFC 6598), caminho
+  `/home/<usuário>`, ID de sessão real ou menção a topologia de rede
+  específica — a barreira para este tipo de vazamento não repetir;
+- convenção **`LOCAL.md`**: anotações do próprio ambiente (endereços reais,
+  máquina, procedimentos específicos) vivem nesse arquivo da raiz, que já
+  vem no `.gitignore` — detalhes pessoais nunca são comitados.
+
 ## [0.2.1] — 2026-10-25
 
 O canal ntfy sai do placeholder e entrega de verdade — com a correção de um

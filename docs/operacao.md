@@ -6,6 +6,9 @@ Uso diário, diagnóstico e manutenção do `notify-opencode`.
 - Verdade sobre eventos (v2.1.4): [eventos.md](eventos.md)
 - Flow, canais e segurança Node-RED: [nodered.md](nodered.md)
 - Ideias futuras: [ROADMAP.md](ROADMAP.md)
+- Anotações do **seu** ambiente (endereços reais, máquina, procedimentos
+  específicos): `LOCAL.md` na raiz do clone — está no `.gitignore` e não vai
+  para o repositório público.
 
 ## Uso diário
 
@@ -126,11 +129,12 @@ suspeitar de vazamento.
 
 ## Segurança (pendências recomendadas)
 
-- **Node-RED sem `adminAuth`**: qualquer dispositivo que alcance a rede privada abre
-  o editor e edita tudo. Configure `adminAuth` (hash bcrypt) no `settings.js`
-  da máquina do Node-RED e reinicie o serviço — não dá para fazer via API;
-- o webhook já exige token (401 sem/errado), mas o tráfego na rede privada é HTTP
-  simples — o token é a única barreira do endpoint;
+- **Node-RED sem `adminAuth`**: qualquer dispositivo que alcance o editor
+  pode editar todos os flows. Configure `adminAuth` (hash bcrypt) no
+  `settings.js` da máquina do Node-RED e reinicie o serviço — não dá para
+  fazer via API;
+- o webhook já exige token (401 sem/errado), mas o tráfego plugin → Node-RED
+  pode ser HTTP simples na sua rede — o token é a única barreira do endpoint;
 - ntfy.sh público = o **conteúdo** (preview/pergunta) transita pelo serviço
   deles. Conteúdo sensível → ntfy self-hosted ou
   `includeQuestionText/includePreview: false` nas options.

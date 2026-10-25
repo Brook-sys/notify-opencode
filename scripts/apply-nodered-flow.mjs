@@ -5,7 +5,8 @@
  * Uso:
  *   node scripts/apply-nodered-flow.mjs [baseUrl]
  *
- * baseUrl padrão: http://SEU-NODE-RED:1880
+ * baseUrl padrão: a origem de plugins[].options.url no opencode.jsonc
+ *                 (ou http://localhost:1880, se não houver)
  *
  * O token do webhook é lido de ~/.config/opencode/opencode.jsonc
  * (plugins[].options.token) e substituído no template antes do deploy —
@@ -23,9 +24,7 @@ import { flowNodes, TAB_ID } from "../nodered/flow.template.mjs"
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, "..")
 
-const base = process.env.NODE_RED_URL ?? process.argv[2] ?? "http://SEU-NODE-RED:1880"
-
-function readPluginToken() {
+function readPluginConfig() {
   const configPath = join(homedir(), ".config", "opencode", "opencode.jsonc")
   const raw = readFileSync(configPath, "utf8")
   let config
@@ -38,10 +37,15 @@ function readPluginToken() {
   const entry = (config.plugins ?? []).find(
     (plugin) => typeof plugin === "object" && String(plugin.package ?? "").includes("opencode-notify-nodered"),
   )
-  return { token: entry?.options?.token, ntfyTopic: entry?.options?.ntfyTopic }
+  return { token: entry?.options?.token, ntfyTopic: entry?.options?.ntfyTopic, url: entry?.options?.url }
 }
 
-const { token, ntfyTopic } = readPluginToken()
+const { token, ntfyTopic, url: webhookUrl } = readPluginConfig()
+
+// Ordem de precedência da URL do Node-RED: env NODE_RED_URL > argumento >
+// origem de plugins[].options.url no opencode.jsonc > localhost. Nenhum
+// endereço pessoal como default do repositório.
+const base = process.env.NODE_RED_URL ?? process.argv[2] ?? (webhookUrl ? new URL(webhookUrl).origin : "http://localhost:1880")
 if (!token) {
   console.error("Token não encontrado em ~/.config/opencode/opencode.jsonc (plugins[].options.token)")
   process.exit(1)
