@@ -5,6 +5,57 @@ Todas as mudanças relevantes deste projeto ficam documentadas neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.2.0] — 2026-10-25
+
+O ícone do rodapé virou o controle principal: **um clique alterna as
+notificações da sessão** e o ícone troca reativamente (🔔 ↔ 🔕). Testado de
+ponta a ponta em pty real contra OpenCode 2.1.4 — clique, RPC, estado no
+servidor, troca de ícone e toast verificados nos dois sentidos (ligar e
+desligar), sem crash.
+
+### Adicionado
+
+- **Ícone clicável no rodapé da sessão** (`plugin/tui.tsx`): um clique com o
+  botão esquerdo alterna o estado da sessão atual. O OpenTUI não sintetiza um
+  evento de "clique" — um clique é o par `down`+`up` — então o toggle só
+  dispara no `up` se o `down` aconteceu sobre o ícone (evita, por exemplo,
+  arrastar uma seleção de texto e soltar sobre o ícone). `selectable={false}`
+  e `stopPropagation()` no `up`, seguindo o padrão dos próprios componentes
+  do OpenCode (autocomplete, tabs, diff viewer).
+- **Cursor de ponteiro no hover** sobre o ícone (`renderer.setMousePointer`,
+  tratado como cosmético: qualquer falha é engolida).
+- **Sincronização inicial por sessão**: um `status` por sessão, em background,
+  na primeira renderização — o ícone nasce correto mesmo se o estado foi
+  alterado via API ou por outra instância da TUI.
+- **Cache reativo local** (`context.storage.store`, durável e sincronizado
+  entre instâncias da TUI): o ícone troca na hora; o clique pergunta o estado
+  real ao servidor antes de alternar.
+
+### Corrigido
+
+- **Toast com variante inválida derrubava a TUI inteira** (bug desde 0.1.0):
+  `variant: "default"` não existe no mapa `text.feedback` do tema e a
+  exceção (`TypeError: undefined is not an object (evaluating
+  'n.text.feedback[t.toast.variant].base')`) crashava o app. Era o caminho do
+  `/notify` sem sessão aberta e do toast de "desligadas". Agora só saem
+  variantes válidas (`info | success | warning | error`) e **todo** toast
+  passa por um helper com `try/catch` — um toast nunca mais pode derrubar o
+  app.
+
+### Fragilidades conhecidas (documentadas, não bloqueiam)
+
+- O componente de toast do OpenCode **não renderiza um toast exibido enquanto
+  outro ainda está visível** (verificado empiricamente: 4 variantes
+  sobrepostas → só a 1ª desenha; espaçadas → todas desenham). Em trocas
+  rápidas só o primeiro toast aparece; o ícone e o estado no servidor seguem
+  corretos — o toast é feedback best-effort.
+- O ícone vive no slot `prompt.footer.status`: **não renderiza enquanto o
+  composer está fora da tela** (sessão em estado "working" com footer
+  oculto). O toggle via `/notify` e RPC continua disponível.
+- Cliques sintéticos que injetam press+release colados no mesmo chunk de
+  stdin são engolidos pelo parser do OpenTUI; terminais reais não coalescem
+  (não afeta usuários, só ferramentas de automação que emulam mouse).
+
 ## [0.1.0] — 2026-10-25
 
 Primeira versão funcional, testada de ponta a ponta contra OpenCode 2.1.4 e

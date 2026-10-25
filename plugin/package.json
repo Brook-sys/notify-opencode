@@ -1,6 +1,6 @@
 {
   "name": "opencode-notify-nodered",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OpenCode V2 plugin that pushes session events (question, permission, done, error) to a Node-RED webhook, with a per-session notification toggle in the TUI.",
   "type": "module",
   "exports": {

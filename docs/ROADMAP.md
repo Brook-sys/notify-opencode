@@ -26,9 +26,17 @@ Hoje o toggle é por sessão (default ligado). Adicionar: default **por
 location** no `opencode.jsonc` (`"default": "off"` para projetos de teste)
 e um toggle global via RPC.
 
+### 5. Reportar/corrigir fragilidades upstream 🛡️
+Descobertas na 0.2.0, verificadas na 2.1.4: (a) `toast.show` com variante
+fora de `info|success|warning|error` **derruba a TUI inteira** (o componente
+lê `theme.text.feedback[variant].base` sem guarda — nós mitigamos com
+try/catch, o correto é corrigir lá); (b) toast exibido enquanto outro está
+visível **não renderiza**; (c) o parser de mouse engole press+release
+coalescidos no mesmo chunk de stdin. Vale issue/PR no `anomalyco/opencode`.
+
 ## Médio prazo
 
-### 5. Bidirecional: responder do celular 🔁
+### 6. Bidirecional: responder do celular 🔁
 A base já foi verificada ao vivo (pesquisa pronta):
 
 - aprovar/negar permissões: `POST /api/session/{id}/permission/{perID}/reply`
@@ -41,52 +49,52 @@ e chame essas APIs. **Segurança obrigatória**: chat ID em allowlist + token
 próprio no endpoint de volta. Este é o item de maior impacto da lista —
 transforma notificação em controle remoto.
 
-### 6. Quiet hours / não perturbe
+### 7. Quiet hours / não perturbe
 Janela de silêncio (ex.: 23h–8h) no próprio Node-RED (function node no
 caminho do canal) — sem tocar no plugin. `error` pode furar a janela
 sobrepujando prioridade.
 
-### 7. Rate limit / digest
+### 8. Rate limit / digest
 Muitos `done` em rajada (loops, subagentes paralelos) = spam. Agrupar em
 janela (ex.: máximo 1 mensagem/minuto com resumo) no Node-RED.
 
-### 8. Dashboard Node-RED (Dashboard 2.0)
+### 9. Dashboard Node-RED (Dashboard 2.0)
 Painel web na mesma instância: histórico de eventos, botões de mute por
 sessão, aprovar/negar permissões pendentes com um clique — reaproveitando as
-APIs do item 5.
+APIs do item 6.
 
-### 9. `done` de subagente opcional
+### 10. `done` de subagente opcional
 Hoje suprimimos (`parentID`). Opção `notifySubagents: true` para quem quiser
 visibilidade total, talvez só em canal separado.
 
-### 10. `minDurationSec` por tipo
+### 11. `minDurationSec` por tipo
 O filtro de duração mínima existe global; estender por tipo
 (ex.: filtrar `done` < 30 s, mas nunca filtrar `error`).
 
 ## Longo prazo
 
-### 11. Publicação como pacote
+### 12. Publicação como pacote
 Publicar no npm e registrar no diretório/registry de plugins do OpenCode
 quando houver — instalação sem clone: `"package": "notify-opencode"`.
 
-### 12. Watchdog / heartbeat
+### 13. Watchdog / heartbeat
 O plugin pinga o Node-RED a cada N minutos; o Node-RED alerta se ficar sem
 heartbeat (pipeline morto = você fica sem notificação e não percebe).
 
-### 13. Multi-servidor
+### 14. Multi-servidor
 Vários hosts com OpenCode apontando para o mesmo Node-RED — o payload já
 carrega `from` (location); falta separar visualmente/rotear por origem.
 
-### 14. Testes automatizados de verdade
+### 15. Testes automatizados de verdade
 Hoje: validação estrutural (`npm test`) + procedimento manual ao vivo.
 Evolução: harness que sobe um OpenCode server efêmero, injeta eventos falsos
 no stream e afirma os payloads; contratos RPC tipados com testes de schema.
 
-### 15. i18n das mensagens
+### 16. i18n das mensagens
 Títulos/textos ("Terminou", "Pergunta") parametrizáveis (PT/EN) — as strings
 vivem no flow Node-RED, então é barato.
 
-### 16. Métricas
+### 17. Métricas
 Contadores de enviados/falhos/suprimidos por motivo expostos via RPC
 (`stats`) ou endpoint — para enxergar a saúde do pipeline sem log.
 

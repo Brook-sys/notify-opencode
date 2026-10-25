@@ -9,6 +9,8 @@ Uso diário, diagnóstico e manutenção do `notify-opencode`.
 
 ## Uso diário
 
+- **Clique no 🔔/🔕 do rodapé** da sessão alterna as notificações dela — o
+  ícone troca na hora e um toast confirma;
 - **`/notify`** dentro de uma sessão abre o seletor Ligado/Desligado
   (também na paleta de comandos: *"Notificações: alternar desta sessão"*);
 - **`/notify off`** / **`/notify on`** alternam direto, sem abrir o seletor;
@@ -17,6 +19,11 @@ Uso diário, diagnóstico e manutenção do `notify-opencode`.
   afeta as outras;
 - sessões headless (sem TUI) ficam sempre ligadas, mas o toggle via RPC
   continua disponível para elas.
+
+> Detalhe: se você alternar muito rápido (menos de ~2,5 s entre um clique e
+> outro), só o primeiro toast aparece — o OpenCode não desenha um toast por
+> cima de outro ainda visível. O ícone e o estado no servidor atualizam
+> normalmente; é só o aviso que se perde.
 
 ### Checagem rápida (últimos eventos)
 

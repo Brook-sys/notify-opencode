@@ -14,7 +14,7 @@ flowchart LR
         S["Sessão / agente"]
         P["plugin notify-nodered (server)
         hooks + stream de eventos"]
-        T["TUI: /notify, 🔔/🔕 (rodapé)"]
+        T["TUI: ícone 🔔/🔕 clicável no rodapé, /notify"]
     end
 
     subgraph NR["Node-RED — flow 'OpenCode Notify'"]
@@ -41,7 +41,7 @@ O plugin OpenCode V2 tem duas superfícies, registradas no `package.json` dele:
 | Arquivo | Roda em | Papel |
 |---|---|---|
 | `plugin/index.ts` | serviço compartilhado (server) | Escuta hooks e o stream público, decide o que notifica, envia ao webhook, guarda o estado do toggle |
-| `plugin/tui.tsx` | cada processo de terminal (CLI) | Comando `/notify`, seletor Ligado/Desligado, indicador 🔔/🔕 no rodapé |
+| `plugin/tui.tsx` | cada processo de terminal (CLI) | Ícone 🔔/🔕 **clicável** no rodapé, comando `/notify`, seletor Ligado/Desligado |
 | `plugin/rpc.ts` | ambos | Contrato RPC (`status`, `setEnabled`) — o servidor é a fonte da verdade; a TUI só chama |
 
 O carregamento é a quente: editar os arquivos e `opencode api post /api/location/reload`
@@ -104,6 +104,42 @@ Hooks não precisam disso: disparam uma única vez por sessão.
   wrapper: `POST /api/rpc/notify-nodered/setEnabled` com `{"input":{…}}`
   (o cliente gerado da TUI embrulha sozinho);
 - Sessão deletada → entrada removida do conjunto (higiene, via evento defensivo).
+
+## O lado TUI: ícone clicável
+
+O indicador 🔔/🔕 no slot `prompt.footer.status` é o controle principal:
+um clique com o botão esquerdo alterna a sessão. Detalhes que vieram de
+teste empírico na 2.1.4 (pty real + injeção de eventos SGR 1006):
+
+- **Um clique é o par `down`+`up`** — o OpenTUI não sintetiza evento de
+  "clique". O toggle só dispara no `up` do botão esquerdo se o `down`
+  aconteceu sobre o ícone (`iconPressed`), o que descarta, por exemplo,
+  arrastar uma seleção de texto e soltar em cima do ícone;
+- `selectable={false}` no `<text>` e `stopPropagation()` no `up` — mesmo
+  padrão dos componentes do próprio OpenCode (autocomplete, session tabs,
+  diff viewer);
+- **Coordenadas 0-based nos eventos**: um clique na célula (col 80, row 47)
+  em escapes 1-based chega como `x:79, y:46`;
+- **Cursor de ponteiro no hover** via `renderer.setMousePointer` — cosmético,
+  engolido em caso de falha;
+- **Hidratação**: 1× `status` por sessão em background na primeira render
+  (o ícone nasce correto); o clique consulta o estado real no servidor antes
+  de alternar — a TUI nunca decide sozinha;
+- **Cache reativo** (`context.storage.store`) faz o ícone trocar na hora;
+  o mesmo store é durável e sincronizado entre instâncias da TUI.
+
+### Fragilidades de plataforma (verificadas, com mitigação no código)
+
+1. **Toast com variante inválida derruba a TUI inteira** — o componente lê
+   `theme.text.feedback[variant].base` sem guarda; `variant` fora de
+   `info | success | warning | error` lança e o app crasha (aconteceu de
+   verdade com `"default"`, que existia na 0.1.0). Mitigação: helper
+   `showToast` com `try/catch` — todo toast do plugin passa por ele;
+2. **Toast sobreposto não desenha** — `toast.show` enquanto outro toast está
+   visível não renderiza (só espaçados). O toggle e o ícone seguem
+   corretos; o toast é best-effort;
+3. **O ícone some com o composer** — em sessão "working" com o footer
+   oculto, o slot não renderiza. `/notify` e RPC continuam disponíveis.
 
 ## O caminho da notificação
 

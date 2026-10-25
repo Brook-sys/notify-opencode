@@ -127,6 +127,8 @@ Depois rode um turno real no OpenCode e confira
 
 ## Uso
 
+- **Clique no 🔔/🔕 do rodapé** da sessão → alterna as notificações dela na
+  hora; o ícone troca sozinho e um toast confirma (🔔 ligadas / 🔕 desligadas);
 - **`/notify`** na sessão → seletor 🔔 Ligadas / 🔕 Desligadas (ou `/notify on|off`);
 - Rodapé da sessão mostra o estado; sessões novas nascem **ligadas**;
 - Toggle também funciona via API (sessões headless):
