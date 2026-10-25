@@ -1,0 +1,35 @@
+{
+  "name": "notify-opencode",
+  "version": "0.1.0",
+  "description": "Notificações do OpenCode no celular via Node-RED — plugin V2 com gatilhos de pergunta, permissão, conclusão e erro, mais toggle por sessão no TUI.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "flow:apply": "node scripts/apply-nodered-flow.mjs",
+    "flow:test": "node scripts/test-send-event.mjs",
+    "flow:validate": "node scripts/validate-flow.mjs",
+    "test": "node scripts/validate-flow.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Brook-sys/notify-opencode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Brook-sys/notify-opencode/issues"
+  },
+  "homepage": "https://github.com/Brook-sys/notify-opencode#readme",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "node-red",
+    "nodered",
+    "notifications",
+    "webhook",
+    "automation"
+  ],
+  "author": "Brook-sys",
+  "license": "MIT"
+}
