@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
-const base = process.argv[2] ?? "http://SEU-NODE-RED:1880"
+const base = process.env.NODE_RED_URL ?? process.argv[2] ?? "http://SEU-NODE-RED:1880"
 
 function readPluginToken() {
   const configPath = join(homedir(), ".config", "opencode", "opencode.jsonc")
