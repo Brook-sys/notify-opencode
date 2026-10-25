@@ -29,7 +29,9 @@ com usuário real e menções ao estado da infraestrutura do autor.
 - **`scripts/check-hygiene.mjs`** (roda no `npm test`, logo no CI): reprova
   o commit se achar IP em faixa CGNAT/VPN (RFC 6598), caminho
   `/home/<usuário>`, ID de sessão real ou menção a topologia de rede
-  específica — a barreira para este tipo de vazamento não repetir;
+  específica — a barreira para este tipo de vazamento não repetir. Varre
+  apenas o que seria commitado (`git ls-files`): notas locais ignoradas
+  pelo git ficam fora do escopo por design;
 - convenção **`LOCAL.md`**: anotações do próprio ambiente (endereços reais,
   máquina, procedimentos específicos) vivem nesse arquivo da raiz, que já
   vem no `.gitignore` — detalhes pessoais nunca são comitados.

@@ -3,7 +3,13 @@
  * Varedura de higiene: o repositório é público — detalhes pessoais do
  * ambiente de quem desenvolve NÃO podem ser comitados.
  *
- * Reprova o commit se achar, em qualquer arquivo rastreado:
+ * Escaneia apenas o que iria para o repositório: arquivos rastreados +
+ * não-ignorados (`git ls-files --cached --others --exclude-standard`).
+ * Notas locais (LOCAL.md, .env, *.log) são cobertas pelo .gitignore e
+ * ficam fora da varredura **por design** — o alvo é o commit, não a
+ * máquina de quem desenvolve.
+ *
+ * Reprova o commit se achar:
  *   - endereço IP em faixa privada de VPN/CGNAT (100.64.0.0/10);
  *   - caminho de home com usuário real (/home/<nome>);
  *   - ID de sessão real do OpenCode (ses_…);
@@ -12,8 +18,9 @@
  * Roda no `npm test` (logo, no CI). Este arquivo é a única exceção da
  * varredura — ele precisa nomear os padrões para poder procurá-los.
  */
-import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join, dirname, resolve, extname } from "node:path"
+import { execSync } from "node:child_process"
+import { readFileSync } from "node:fs"
+import { dirname, extname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -21,8 +28,6 @@ const repoRoot = resolve(here, "..")
 const self = fileURLToPath(import.meta.url)
 
 const EXTENSIONS = new Set([".md", ".mjs", ".js", ".ts", ".tsx", ".json", ".yml", ".yaml", ".sh", ".txt"])
-// .github É escaneado (workflows podem vazar IPs/hosts também)
-const SKIP_DIRS = new Set([".git", "node_modules", "dist"])
 
 const PATTERNS = [
   // faixa CGNAT 100.64.0.0/10 (100.64–100.127) — endereços de VPN/overlay
@@ -35,30 +40,28 @@ const PATTERNS = [
   [/\bses_[A-Za-z0-9]{15,}/, "ID de sessão real (ses_…)"],
 ]
 
-const problems = []
+const candidates = execSync("git ls-files --cached --others --exclude-standard", {
+  cwd: repoRoot,
+  encoding: "utf8",
+})
+  .split("\n")
+  .filter(Boolean)
+  .map((rel) => join(repoRoot, rel))
 
-const walk = (dir) => {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry)
-    if (statSync(full).isDirectory()) {
-      if (SKIP_DIRS.has(entry)) continue
-      walk(full)
-      continue
-    }
-    if (full === self) continue
-    if (!EXTENSIONS.has(extname(entry))) continue
-    const lines = readFileSync(full, "utf8").split("\n")
-    lines.forEach((line, i) => {
-      for (const [pattern, why] of PATTERNS) {
-        if (pattern.test(line)) {
-          const rel = full.replace(repoRoot + "/", "")
-          problems.push(`${rel}:${i + 1} — ${why}\n      ↳ ${line.trim().slice(0, 100)}`)
-        }
+const problems = []
+for (const full of candidates) {
+  if (full === self) continue
+  if (!EXTENSIONS.has(extname(full))) continue
+  const rel = full.replace(repoRoot + "/", "")
+  const lines = readFileSync(full, "utf8").split("\n")
+  lines.forEach((line, i) => {
+    for (const [pattern, why] of PATTERNS) {
+      if (pattern.test(line)) {
+        problems.push(`${rel}:${i + 1} — ${why}\n      ↳ ${line.trim().slice(0, 100)}`)
       }
-    })
-  }
+    }
+  })
 }
-walk(repoRoot)
 
 if (problems.length > 0) {
   console.error(`FAIL — ${problems.length} ocorrência(s) de detalhe pessoal/ambiental:\n`)
