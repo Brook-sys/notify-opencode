@@ -5,6 +5,37 @@ Todas as mudanças relevantes deste projeto ficam documentadas neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.3.1] — 2026-10-27
+
+Correção de uma regressão introduzida na 0.3.0 — o CI (Node 22) estava
+vermelho desde o push da 0.3.0.
+
+### Corrigido
+
+- **o timer do timeout não é mais `unref()`'d** (`plugin/summary.mjs`): o
+  `setTimeout` do `withTimeout` precisa segurar o event loop até o
+  `Promise.race` resolver. Com `unref()`, uma promessa que nunca resolve
+  deixa o loop vazio e o **Node encerra o processo silenciosamente**,
+  abandonando a promise pendente (`Promise resolution is still pending but
+  the event loop has already resolved`). No CI isso cancelava os 5 últimos
+  testes da suíte (`# pass 13 # cancelled 5`); no Node 24 local a suíte
+  passava, o que escondia o problema. Como o timer é limpo no `finally`,
+  ele só mantém o processo vivo enquanto o timeout está em curso — no
+  servidor o efeito é nulo, porque a requisição ao provider já segura o
+  loop por conta própria;
+- **regressão coberta por teste**: `withTimeout` ganhou dois casos na
+  suíte (promise que nunca resolve rejeita no prazo; o timer é limpo quando
+  a promise resolve antes) — 20 testes no total.
+
+### Reproduzido antes de corrigir
+
+Ambiente local com Node 22.23.4 (musl), o mesmo do CI:
+
+| Código | Resultado |
+|---|---|
+| 0.3.0 (com `unref()`) | `# pass 13 # cancelled 5` — falha idêntica ao CI publicado |
+| 0.3.1 (sem `unref()`) | `# pass 20 # cancelled 0` |
+
 ## [0.3.0] — 2026-10-27
 
 O corpo da notificação deixa de ser só o texto cortado do agente: com

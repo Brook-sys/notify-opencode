@@ -232,8 +232,21 @@ dependências**, com o `generate` injetado:
 | `summarize` | Pipeline completo ( heurística → modelo → fallback) |
 
 Por ser puro, ele roda em Node 22 sem flags no CI: `scripts/test-summary.mjs`
-(18 testes) cobre o corte de frase, a neutralização do delimitador, a
-sanitização da saída, o timeout, a resposta vazia e o teto de entrada.
+(20 testes) cobre o corte de frase, a neutralização do delimitador, a
+sanitização da saída, o timeout, a resposta vazia, o teto de entrada e a
+semântica do timer do timeout.
+
+#### O timer do timeout segura o event loop (de propósito)
+
+O `setTimeout` do `withTimeout` **não** é `unref()`'d. O timer precisa
+segurar o event loop até o `Promise.race` resolver: com `unref()`, uma
+promessa que nunca resolve deixa o loop vazio, o Node encerra o processo
+silenciosamente e a promise pendente é abandonada — foi exatamente o que
+quebrou o CI no Node 22 (`Promise resolution is still pending but the event
+loop has already resolved`, 5 testes cancelados). Como o timer é limpo no
+`finally`, ele só mantém o processo vivo enquanto o timeout está em curso
+— no servidor, o efeito é nulo, porque ali a requisição ao provider já
+segura o loop por conta própria.
 
 ### Decisões de UX (e o que elas custam)
 

@@ -157,6 +157,13 @@ export function fallbackText(cleaned, kind, maxChars) {
  * Promise.race com timeout. Limitação conhecida e documentada: a requisição
  * subjacente NÃO é cancelada — o resultado é apenas abandonado (a cota do
  * provider continua sendo consumida).
+ *
+ * O timer NÃO é unref'd de propósito: ele precisa segurar o event loop
+ * até o race resolver. Com `unref()`, um `Promise` que nunca settle deixa o
+ * event loop vazio — o Node encerra o processo silenciosamente e a promise
+ * pendente é abandonada ("Promise resolution is still pending but the event
+ * loop has already resolved", Node 22 no CI). O timer é limpo no `finally`,
+ * então ele só segura o processo enquanto o timeout está de fato em curso.
  */
 export function withTimeout(promise, ms) {
   const limit = Number(ms)
@@ -164,7 +171,6 @@ export function withTimeout(promise, ms) {
   let timer
   const guard = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error(`summary timeout after ${limit}ms`)), limit)
-    if (typeof timer.unref === "function") timer.unref()
   })
   return Promise.race([Promise.resolve(promise), guard]).finally(() => clearTimeout(timer))
 }

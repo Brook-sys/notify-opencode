@@ -11,7 +11,7 @@ destes itens são bem-vindas (veja [CONTRIBUTING](../CONTRIBUTING.md)).
 O corpo da notificação passa a ser um resumo gerado por uma requisição
 **stateless** ao modelo (`ctx.experimental.generate.text`), nos quatro tipos
 de evento. Opt-in (`summary: "off"` por padrão), com fallback determinístico
-obrigatório e núcleo puro testado (18 testes no CI). Medições e fragilidades
+obrigatório e núcleo puro testado (20 testes no CI). Medições e fragilidades
 em [arquitetura.md](arquitetura.md#camada-2--resumo-do-corpo-por-ia-opt-in).
 
 ### 1. Canal de notificação real 📱 ✅ (feito na 0.2.1)

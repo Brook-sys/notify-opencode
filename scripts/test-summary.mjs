@@ -14,6 +14,7 @@ import {
   sanitizeOutput,
   summarize,
   truncateAtSentence,
+  withTimeout,
 } from "../plugin/summary.mjs"
 
 const LONG = [
@@ -149,6 +150,25 @@ test("summarize: timeout cai no fallback", async () => {
   assert.equal(result.source, "fallback")
   assert.match(result.error, /timeout/)
   assert.ok(Date.now() - started < 2000)
+})
+
+// Regressão: o timer do timeout precisa segurar o event loop. Com `unref()`,
+// um Promise que nunca resolve deixa o loop vazio e o Node encerra o
+// processo silenciosamente (Node 22 no CI: "Promise resolution is still
+// pending but the event loop has already resolved"), cancelando os testes.
+test("withTimeout: promise que nunca resolve rejeita no prazo", async () => {
+  await assert.rejects(
+    () => withTimeout(new Promise(() => {}), 50),
+    /summary timeout after 50ms/,
+  )
+})
+
+test("withTimeout: limpa o timer quando a promise resolve antes", async () => {
+  const timeouts = () => process.getActiveResourcesInfo().filter((r) => r === "Timeout").length
+  const before = timeouts()
+  const result = await withTimeout(Promise.resolve("ok"), 5000)
+  assert.equal(result, "ok")
+  assert.equal(timeouts(), before, "o timer do timeout não foi limpo")
 })
 
 test("summarize: resposta vazia cai no fallback", async () => {
