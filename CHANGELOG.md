@@ -5,6 +5,84 @@ Todas as mudanças relevantes deste projeto ficam documentadas neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.3.0] — 2026-10-27
+
+O corpo da notificação deixa de ser só o texto cortado do agente: com
+`"summary": "llm"` ele passa a ser um **resumo gerado por uma requisição
+extra ao modelo**, nos quatro tipos de evento (`question`, `permission`,
+`done`, `error`). **Opt-in** — o default do repositório continua sendo
+`"off"`.
+
+### Adicionado
+
+- **Camada 2 — resumo por IA** (`plugin/index.ts` + núcleo puro em
+  `plugin/summary.mjs`): uma requisição **stateless** ao modelo
+  (`ctx.experimental.generate.text`) transforma o texto do evento no corpo da
+  notificação;
+  - *stateless de propósito*: sem sessão, sem tools e sem histórico — um
+    resumo que abrisse sessão emitiria `session.execution.*` e o próprio
+    plugin escuta esses eventos. A recursão de notificação é **impossível por
+    construção**;
+  - **texto curto → heurística instantânea** (abaixo de
+    `summaryMinSourceChars`, 200 chars): sem chamada ao modelo, sem custo;
+  - **fallback determinístico obrigatório**: erro, timeout ou resposta vazia
+    do modelo → texto limpo cortado em fronteira de frase. A notificação
+    **sempre** sai;
+  - **fila FIFO por sessão**: dois eventos próximos não saem fora de ordem
+    por causa da latência do resumo;
+  - **o hook nunca bloqueia o agente**: `question`/`permission` notificam em
+    background;
+  - **dados acionáveis literais**: as opções da pergunta e os recursos da
+    permissão nunca são "resumidos";
+- **Opções**: `summary` (`off` \| `llm`), `summaryModel`,
+  `summaryTimeoutSec`, `summaryMaxChars`, `summaryMinSourceChars`,
+  `summaryMaxInputChars`, `summaryLanguage`;
+- **Núcleo puro e testável** (`plugin/summary.mjs`): `cleanText`,
+  `truncateAtSentence`, `buildPrompt`, `sanitizeOutput`, `fallbackText`,
+  `withTimeout` e `summarize` — sem I/O, sem rede, sem dependências;
+- **`scripts/test-summary.mjs`** (no `npm test` e no CI): 18 testes do núcleo
+  — corte em fronteira de frase, neutralização do delimitador do prompt,
+  sanitização da saída do modelo, timeout, resposta vazia e teto de entrada;
+- **Node-RED usa o resumo**: o flow prefere `body.summary` como corpo e
+  guarda o `summarySource` no buffer de eventos; o `scripts/validate-flow.mjs`
+  passou a exigir esses campos;
+- **Debug do resumo**: `summary.heuristic` · `summary.generate.start` ·
+  `summary.generate.ok` · `summary.generate.error` · `summary.model-failed` ·
+  `summary.llm` · `summary.fallback` (com modelo, latência e erro).
+
+### Corrigido
+
+- **`error` usa a mensagem do erro**: o gatilho passou a usar
+  `data.error.message` do `session.execution.failed` (antes usava só a última
+  mensagem do assistente — que costuma não ser o erro);
+- **resumo curto não vira "falha"**: o texto abaixo do limite de origem era
+  tratado como erro do modelo e caía no fallback (o `summarySource` saía
+  `fallback` em vez de `heuristic`).
+
+### Verificado ao vivo (OpenCode 2.2.0 + Node-RED real)
+
+| Cenário | Resultado |
+|---|---|
+| `done` com texto longo, modelo respondendo | `summarySource: "llm"` no buffer, com o resumo do modelo — 32,3 s de latência |
+| `done` com texto curto | `summarySource: "heuristic"`, notificação enviada 15 ms depois do fim do turno |
+| `summaryModel` inválido | erro do modelo em 5 ms (`Model not found`) → tentativa seguinte (modelo da sessão) → resumo OK |
+| Timeout do modelo | `summarySource: "fallback"` com o texto limpo, notificação entregue mesmo assim |
+| `question` real com opções | notificação com `options` literais e resumo ao lado |
+
+### Fragilidades conhecidas (medidas, não estimadas)
+
+- **Latência**: 4,8 s (prompt curto) · 14,6 s (~800 chars de entrada) ·
+  32–64 s com o provider sob carga. A notificação de um texto longo **espera**
+  o modelo — o hook não bloqueia o agente, mas o celular demora;
+- **o timeout não cancela a requisição**: o `Promise.race` abandona a promessa,
+  mas a chamada continua viva no provider e a cota é consumida;
+- **auto-contenção**: com o mesmo provider do agente, o resumo disputa fila
+  com o próximo turno — use um `summaryModel` diferente quando puder;
+- **o resumo pode estar errado**: o modelo pode inventar. O alcance do dano é
+  o texto na tela do celular (a requisição não tem tools e não executa nada);
+- **o custo do resumo não aparece nas stats da sessão** (stateless): aparece
+  na fatura do provider.
+
 ## [0.2.2] — 2026-10-25
 
 O repositório é público e é produto para terceiros — ele não deve descrever o

@@ -57,6 +57,53 @@ ligada), supressão de `done` de **subagentes**, turnos **interrompidos** não
 avisam, envio **fire-and-forget** (timeout 4 s — o pipeline morto nunca
 trava uma sessão) e deduplicação entre instâncias do plugin.
 
+## Resumo do corpo com IA (opt-in)
+
+Por padrão o corpo da notificação é o **texto limpo** do evento (sem
+markdown, sem blocos de código, cortado em fronteira de frase). Ligando
+`"summary": "llm"`, o plugin faz **uma requisição extra ao modelo** para
+resumir esse corpo — nos quatro tipos de evento.
+
+```jsonc
+{
+  "plugins": [
+    {
+      "package": "/caminho/do/clone/notify-opencode/plugin",
+      "options": {
+        "url": "http://SEU-NODE-RED:1880/opencode/event",
+        "token": "um-token-aleatorio-bem-longo",
+        "ntfyTopic": "opencode-<hash-bem-aleatorio>",
+        "summary": "llm",
+        "summaryModel": "SEU-PROVEDOR/SEU-MODELO"
+      }
+    }
+  ]
+}
+```
+
+Como funciona:
+
+- **Texto curto** (abaixo de `summaryMinSourceChars`, 200 chars por padrão) →
+  limpeza determinística, **sem chamar o modelo** — a notificação sai na hora;
+- **Texto longo** → uma requisição **stateless** (`ctx.experimental.generate.text`:
+  sem sessão, sem tools, sem histórico) e a notificação sai com o resumo;
+- **Falha, timeout ou resposta vazia do modelo** → **fallback determinístico**
+  (o texto limpo, cortado em frase). A notificação **sempre** sai;
+- os dados acionáveis continuam **literais**: as opções da pergunta e os
+  recursos da permissão nunca são "resumidos";
+- o hook de pergunta/permissão **nunca bloqueia o agente** — a notificação é
+  enviada em background, depois da resposta do modelo.
+
+> ⚠️ Medições deste ambiente (OpenCode 2.2.0, provider próprio, um modelo
+> "rotativo" compartilhado entre o agente e o resumo): **4,8 s** com prompt
+> curto, **14,6 s** com ~1k chars de entrada e **58–64 s** quando o provider
+> está sob carga. A latência é do provider, não do plugin — e o resumo
+> consome cota do mesmo provider que serve o agente. Use um
+> `summaryModel` **diferente** do modelo do agente quando puder.
+>
+> O custo da requisição de resumo **não aparece** nas stats da sessão (ela é
+> stateless, fora do histórico) — conta no seu provider, não no OpenCode.
+
 ## Status de verificação (nada aqui é "deve funcionar")
 
 Testado de ponta a ponta contra OpenCode **2.1.4** + Node-RED real:
@@ -154,6 +201,13 @@ Depois rode um turno real no OpenCode e confira
 | `minDurationSec` | `0` | Suprime `done` mais curto que N segundos |
 | `includePreview` | `true` | Inclui preview da última resposta no `done` |
 | `includeQuestionText` | `true` | Inclui texto da pergunta no `question` |
+| `summary` | `off` | `off` = corpo vem do texto limpo. `llm` = uma requisição extra ao modelo gera o resumo |
+| `summaryModel` | modelo da sessão → modelo default | `"provider/model"` (ou `{providerID, id}`) usado no resumo. Sem valor, usa o modelo da sessão e, na falta dele, o default |
+| `summaryTimeoutSec` | `30` | Deadline único das tentativas de resumo. Estourou → fallback determinístico |
+| `summaryMaxChars` | `240` | Tamanho máximo do corpo final da notificação |
+| `summaryMinSourceChars` | `200` | Abaixo disso o texto é curto demais para resumir: sem chamada ao modelo |
+| `summaryMaxInputChars` | `2000` | Teto do texto enviado ao modelo (corte preferindo a conclusão). Menor = mais rápido e mais barato |
+| `summaryLanguage` | `pt-BR` | Idioma pedido ao modelo no resumo |
 | `debug` | `false` | Log JSONL de diagnóstico (o quê enviou/pulou e por quê) |
 | `debugLogPath` | `/tmp/opencode/notify-nodered-debug.jsonl` | Caminho do log de debug |
 
@@ -173,7 +227,9 @@ Depois rode um turno real no OpenCode e confira
 
 ```text
 plugin/              Plugin OpenCode V2
-  index.ts             lado servidor: hooks, stream, dedupe, toggle, envio
+  index.ts             lado servidor: hooks, stream, dedupe, toggle, resumo, envio
+  summary.mjs          núcleo puro do resumo (sem I/O, sem rede) — testável
+  summary.d.mts        tipos do núcleo para o editor/tsc
   tui.tsx              lado terminal: /notify, seletor, indicador 🔔/🔕
   rpc.ts               contrato RPC (status / setEnabled)
   package.json         exports do plugin (server + tui + rpc)
@@ -183,7 +239,9 @@ nodered/              Lado Node-RED
 scripts/
   apply-nodered-flow.mjs   deploy idempotente via API do Node-RED
   test-send-event.mjs     teste de ponta com eventos falsos + 401
+  test-summary.mjs        testes unitários do núcleo de resumo (npm test / CI)
   validate-flow.mjs       validação estrutural (npm test / CI)
+  check-hygiene.mjs       varredura de privacidade do que seria commitado
   smoke-plugin/            utilitário de descoberta de eventos (documentação viva)
 docs/                 Documentação por área
 .github/              CI + templates de issue
@@ -199,7 +257,18 @@ docs/                 Documentação por área
 - o gatilho `permission` depende de regras `ask` — a política base da V2 é
   `allow` para tudo;
 - `/notify` exige TUI; sessões headless ficam sempre ligadas (toggle via RPC
-  disponível).
+  disponível);
+- **resumo por IA**: a notificação de um texto longo **espera** o modelo (4,8 s
+  a >60 s no ambiente medido) — o hook não bloqueia o agente, mas o celular
+  demora; o timeout (`summaryTimeoutSec`) limita a espera e o fallback
+  determinístico cobre o resto;
+- **resumo por IA**: o timeout **não cancela** a requisição no provider — a
+  chamada continua consumindo cota depois que o plugin desistiu;
+- **resumo por IA**: um resumo errado é possível (o modelo pode inventar) — o
+  alcance do estrago é o texto na tela do celular: a requisição é stateless e
+  **não tem tools**, então ela não executa nada;
+- **resumo por IA**: o custo não aparece nas stats da sessão (requisição
+  stateless, fora do histórico).
 
 ## Segurança
 

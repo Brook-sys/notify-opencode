@@ -66,6 +66,40 @@ curl -s "https://ntfy.sh/SEU-TOPICO/json?poll=1&since=5m"
    npm run flow:test
    ```
 
+### Diagnóstico do resumo por IA (`summary: "llm"`)
+
+As entradas do debug log específicas do resumo:
+
+| Entrada | Significado |
+|---|---|
+| `summary.heuristic` | Texto curto — limpeza determinística, **nenhuma** chamada ao modelo |
+| `summary.generate.start` | Requisição stateless ao modelo iniciada (modelo, tamanho do prompt) |
+| `summary.generate.ok` | O modelo respondeu (latência, tamanho da resposta) |
+| `summary.generate.error` | O modelo recusou/errou (ex.: `Model not found: …`, erro do provider) |
+| `summary.model-failed` | A tentativa falhou — passa para o próximo candidato (no máximo 2) |
+| `summary.llm` | Resumo aceito e usado como corpo da notificação |
+| `summary.fallback` | Todos os candidatos falharam — o corpo é o texto limpo, cortado |
+
+```sh
+grep '"kind":"summary' /tmp/opencode/notify-nodered-debug.jsonl | tail -20
+```
+
+Truques de leitura:
+
+- **`summary.generate.ok` depois de `summary.model-failed`** = a requisição
+  **não foi cancelada**: ela continuou viva no provider depois do timeout
+  (a cota foi consumida mesmo assim). É o comportamento conhecido do
+  `Promise.race`;
+- **latência alta no `summary.generate.ok`** = o provider está lento ou
+  disputando fila com o agente. Um `summaryModel` diferente do modelo do
+  agente resolve;
+- **`summary.model-failed` com `Model not found`** = `summaryModel` inválido.
+  O plugin tenta o modelo da sessão em seguida — se ele falhar também, o
+  fallback assume;
+- **`summary.fallback` com `timeout after Nms`** = o modelo não respondeu
+  dentro de `summaryTimeoutSec`. Aumente o timeout ou reduza
+  `summaryMaxInputChars`.
+
 ## Troubleshooting
 
 | Sintoma | Causa provável | Correção |
@@ -78,6 +112,9 @@ curl -s "https://ntfy.sh/SEU-TOPICO/json?poll=1&since=5m"
 | Nada chega no celular (mas chega no Node-RED) | Tópico divergente entre `options.ntfyTopic` e a assinatura do app, ou ntfy.sh fora do ar | Confira o tópico dos dois lados; cheque com o `curl` do tópico acima; reimplante com `npm run flow:apply` |
 | Notificação some quando o Node-RED reinicia | Buffer de eventos é volátil (context em memória) | Comportamento esperado; buffer persistente está no [roadmap](ROADMAP.md) |
 | Evento perdido com Node-RED fora | Sem retry no envio (v0.1) | Debug log tem o registro; fila/retry é item do [roadmap](ROADMAP.md) |
+| Notificação demora muito para chegar (com `summary: "llm"`) | O resumo espera o modelo (4,8 s a >60 s medidos) | Baixe `summaryTimeoutSec` (o fallback assume), reduza `summaryMaxInputChars` ou use um `summaryModel` mais rápido/diferente do agente |
+| `summarySource` sempre `fallback` | Modelo indisponível, sem cota ou timeout | `grep '"kind":"summary' no debug log` — o erro exato vem em `summary.generate.error` |
+| Corpo da notificação parece "cortado" e não resumido | Fallback determinístico em ação (o texto é limpo e cortado em frase) | Normal quando o modelo falha; com `summary: "off"` isso é sempre o comportamento |
 
 ## Fazendo o `permission` disparar (exemplo)
 

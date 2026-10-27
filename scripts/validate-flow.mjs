@@ -82,6 +82,31 @@ ok(
   "a função Registra evento deve publicar via corpo JSON (headers HTTP não aceitam emoji)",
 )
 
+// --- Camada 2: resumo por IA ---------------------------------------------------
+// O plugin pode enviar `summary` (corpo resumido) + `summarySource`
+// ("llm" | "heuristic" | "fallback"). O flow prefere o resumo e mantém os
+// dados acionáveis (opções, recursos) literais; o buffer guarda a origem.
+ok(
+  validateFunc.includes("body.summary"),
+  "a função de validação deve ler body.summary (corpo resumido pela Camada 2)",
+)
+ok(
+  validateFunc.includes("body.summarySource") && validateFunc.includes("summarySource:"),
+  "a função de validação deve propagar body.summarySource para msg.notify",
+)
+ok(
+  recordFunc.includes("summarySource"),
+  "a função Registra evento deve guardar summarySource no buffer de eventos",
+)
+ok(
+  /summary\s*\|\|/.test(validateFunc),
+  "a função de validação deve usar o resumo como corpo preferencial (summary || fallback)",
+)
+ok(
+  validateFunc.includes("body.options") && validateFunc.includes("body.resources"),
+  "a função de validação deve manter opções/recursos literais (dados acionáveis)",
+)
+
 // --- corpos de função ---------------------------------------------------------
 for (const node of flowNodes.filter((node) => node.type === "function")) {
   ok(typeof node.func === "string" && node.func.trim().length > 0, `nó function ${node.id} (${node.name}) sem corpo`)

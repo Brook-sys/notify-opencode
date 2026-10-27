@@ -37,24 +37,30 @@ const meta = {
 let title = meta.label;
 let text = "";
 
+// Resumo por IA (opcional): quando o plugin envia "summary", ele é o corpo
+// da notificação. Os dados acionáveis (opções, recursos) continuam literais.
+const summary = typeof body.summary === "string" ? body.summary.trim() : "";
+
 if (type === "question") {
     if (body.header) title = "❓ " + body.header;
-    text = body.question || "(pergunta sem texto)";
+    text = summary || (body.question || "(pergunta sem texto)");
     if (Array.isArray(body.options) && body.options.length) {
         text += "\\nOpções: " + body.options.join(", ");
     }
 } else if (type === "permission") {
     title = "🔐 Permissão: " + (body.action || "ação");
-    text = Array.isArray(body.resources) && body.resources.length
-        ? body.resources.join("\\n")
-        : "(sem detalhes)";
+    const resources = Array.isArray(body.resources) ? body.resources : [];
+    text = summary || (resources.length ? resources.join("\\n") : "(sem detalhes)");
+    // Se o resumo já cita os recursos, não repete a lista.
+    const alreadyListed = resources.length > 0 && resources.slice(0, 2).some((r) => text.includes(r));
+    if (resources.length && !alreadyListed) text += "\\n" + resources.join("\\n");
 } else if (type === "done") {
     if (body.title) title = "✅ " + body.title;
-    text = (body.preview || "").trim() || "Turno concluído.";
+    text = summary || (body.preview || "").trim() || "Turno concluído.";
     if (typeof body.durationSec === "number") text += "\\n(" + body.durationSec + "s)";
 } else if (type === "error") {
     if (body.title) title = "❗ " + body.title;
-    text = (body.preview || "").trim() || "Falha no turno.";
+    text = summary || (body.preview || "").trim() || "Falha no turno.";
 }
 
 msg.notify = {
@@ -65,6 +71,7 @@ msg.notify = {
     ts: body.ts || Date.now(),
     title: title,
     text: text,
+    summarySource: body.summarySource || "",
     raw: body,
 };
 
@@ -82,6 +89,9 @@ events.unshift({
     priority: msg.notify.priority,
     title: msg.notify.title,
     text: String(msg.notify.text).slice(0, 300),
+    // Origem do corpo: "llm" (resumo do modelo), "heuristic" (texto curto,
+    // sem chamada), "fallback" (modelo falhou) ou "" (plugin sem Camada 2).
+    summarySource: msg.notify.summarySource || "",
     sessionID: msg.notify.sessionID,
     project: msg.notify.project,
 });

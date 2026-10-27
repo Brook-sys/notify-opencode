@@ -40,7 +40,9 @@ O plugin OpenCode V2 tem duas superfícies, registradas no `package.json` dele:
 
 | Arquivo | Roda em | Papel |
 |---|---|---|
-| `plugin/index.ts` | serviço compartilhado (server) | Escuta hooks e o stream público, decide o que notifica, envia ao webhook, guarda o estado do toggle |
+| `plugin/index.ts` | serviço compartilhado (server) | Escuta hooks e o stream público, decide o que notifica, monta o resumo, envia ao webhook, guarda o estado do toggle |
+| `plugin/summary.mjs` | server (importado pelo `index.ts`) | Núcleo **puro** do resumo: limpeza, corte, prompt, sanitização, timeout, fallback — sem I/O e sem dependências |
+| `plugin/summary.d.mts` | editor/tsc | Tipos do núcleo (o runtime carrega o `.mjs`) |
 | `plugin/tui.tsx` | cada processo de terminal (CLI) | Ícone 🔔/🔕 **clicável** no rodapé, comando `/notify`, seletor Ligado/Desligado |
 | `plugin/rpc.ts` | ambos | Contrato RPC (`status`, `setEnabled`) — o servidor é a fonte da verdade; a TUI só chama |
 
@@ -159,7 +161,9 @@ send(payload) → fetch(url, { headers: { "x-webhook-token": token }, body })
 | `type` | todos | `question` \| `permission` \| `done` \| `error` |
 | `sessionID` | todos | id da sessão |
 | `title` | done/error | título da sessão |
-| `preview` | done/error | últimas palavras da resposta (até 280 chars, se `includePreview`) |
+| `preview` | done/error | corpo final da notificação (com `summary: "llm"`, o mesmo conteúdo de `summary`) |
+| `summary` | todos | corpo final da notificação (resumo do modelo ou texto limpo) — **só com `summary: "llm"`** |
+| `summarySource` | todos | `llm` \| `heuristic` \| `fallback` \| `none` — **só com `summary: "llm"`** |
 | `durationSec` | done/error | duração do turno, se conhecida |
 | `question` | question | texto da pergunta (se `includeQuestionText`) |
 | `header` | question | header da pergunta |
@@ -168,6 +172,93 @@ send(payload) → fetch(url, { headers: { "x-webhook-token": token }, body })
 | `resources` | permission | recursos/aguardando aprovação (até 4) |
 | `from` | todos | location de origem (adicionado no envio) |
 | `ts` | todos | epoch ms (adicionado no envio) |
+
+## Camada 2 — resumo do corpo por IA (opt-in)
+
+Com `summary: "llm"` o corpo da notificação passa a ser **um resumo gerado
+pelo modelo**, em vez do texto bruto cortado. Default do repositório:
+`"off"` — a feature é opt-in porque custa tokens, cota e latência.
+
+```mermaid
+sequenceDiagram
+    participant E as Evento (done/question/…)
+    participant Q as Fila FIFO (por sessão)
+    participant S as summary.mjs (núcleo puro)
+    participant M as Modelo (stateless)
+    participant N as Node-RED
+
+    E->>Q: enqueue(sessão)
+    Q->>S: summarize(kind, texto, config)
+    alt texto curto (< summaryMinSourceChars)
+        S-->>N: texto limpo · summarySource=heuristic
+    else texto longo
+        S->>M: ctx.experimental.generate.text(prompt, model)
+        alt resposta ok
+            M-->>S: texto do modelo
+            S-->>N: resumo sanitizado · summarySource=llm
+        else erro / timeout / vazio
+            M--xS: falha
+            S-->>N: fallback determinístico · summarySource=fallback
+        end
+    end
+```
+
+### Por que `experimental.generate.text` e não `session.generate`
+
+- **`experimental.generate.text` é stateless**: não cria sessão, não recebe
+  tools, não escreve no histórico. Um resumo que abrisse uma sessão geraria
+  eventos `session.execution.*` — e o próprio plugin escuta esses eventos:
+  a recursão de notificação viraria estruturalmente possível. Com a
+  primitiva stateless, ela é **impossível por construção**;
+- `session.generate` usaria as tools do agente: o modelo poderia "agir"
+  durante um resumo — não é o que se quer num texto que vai para o celular;
+- o custo da requisição **não aparece** nas stats da sessão (fora do
+  histórico). Isso é uma consequência de ser stateless, e é uma fonte de
+  surpresas na conta do provider.
+
+### O núcleo puro (`plugin/summary.mjs`)
+
+Toda a lógica de resumo vive num módulo **sem I/O, sem rede e sem
+dependências**, com o `generate` injetado:
+
+| Função | Papel |
+|---|---|
+| `cleanText` | Remove blocos de código, markdown e caracteres de controle |
+| `truncateAtSentence` | Corte em fronteira de frase (`prefer: "start"` \| `"end"`) |
+| `buildPrompt` | Monta o prompt com o conteúdo como **dado** (delimitadores neutralizados) |
+| `sanitizeOutput` | Limpa a saída do modelo (cercas, rótulo `Resumo:`, aspas, markdown) |
+| `fallbackText` | Fallback determinístico (Camada 0) |
+| `withTimeout` | `Promise.race` com deadline |
+| `summarize` | Pipeline completo ( heurística → modelo → fallback) |
+
+Por ser puro, ele roda em Node 22 sem flags no CI: `scripts/test-summary.mjs`
+(18 testes) cobre o corte de frase, a neutralização do delimitador, a
+sanitização da saída, o timeout, a resposta vazia e o teto de entrada.
+
+### Decisões de UX (e o que elas custam)
+
+| Decisão | Motivo | Custo |
+|---|---|---|
+| **Uma notificação por evento** | O requisito é uma notificação por evento; duas (corpo bruto + resumo) viram spam no celular | O corpo final pode ser o fallback, mesmo tendo o modelo respondido depois |
+| **Texto curto → heurística instantânea** | Não gastar cota com "pronto" | Nenhum resumo "inteligente" em textos curtos (que já são legíveis) |
+| **O hook nunca bloqueia o agente** | `question`/`permission` estão no caminho crítico da sessão | A notificação sai depois da resposta do modelo (5–60 s no ambiente medido) |
+| **Fila FIFO por sessão** | Dois eventos próximos não podem sair fora de ordem por causa da latência do resumo | O segundo evento espera o primeiro |
+| **Fallback determinístico obrigatório** | Falha do modelo não pode virar notificação ausente | O corpo pode ser menos bom que o resumo (é o texto cortado) |
+
+### Fragilidades da Camada 2
+
+- **Latência**: 4,8 s (prompt curto) a 64 s (provider sob carga) — a notificação
+  de um texto longo **espera** o modelo;
+- **O timeout não cancela a requisição**: o `Promise.race` abandona a
+  promessa, mas a chamada no provider continua viva e consumindo cota;
+- **Auto-contenção**: se o `summaryModel` for o mesmo provider que serve o
+  agente, o resumo disputa fila com o próximo turno do agente. Use um
+  `summaryModel` diferente quando puder;
+- **O resumo pode estar errado**: o modelo pode inventar ou distorcer. O
+  alcance do dano é o texto na tela do celular — a requisição não tem tools
+  e não executa nada;
+- **O custo não aparece nas stats da sessão** (stateless) — o consumo aparece
+  na fatura do provider, não no OpenCode.
 
 ## Decisões explícitas (o que NÃO fazemos e por quê)
 
@@ -179,6 +270,9 @@ send(payload) → fetch(url, { headers: { "x-webhook-token": token }, body })
 | `minDurationSec` filtra turnos curtíssimos | Opção para reduzir ruído (default 0 = desligado) |
 | Nenhum `await` no caminho da sessão | Notificação é efeito colateral; nunca pode travar/quebrar o agente |
 | Token por header, não na URL | Evita vazamento em logs de proxy/access log |
+| Resumo por IA **opt-in** (`summary: "off"`) | Custa tokens, cota e latência; quem não pedir, não paga |
+| `experimental.generate.text` (stateless) em vez de `session.generate` | Sem tools e sem eventos de sessão: recursão de notificação estruturalmente impossível |
+| O conteúdo do resumo entra como **dado**, com delimitadores neutralizados | O texto resumido pode conter instruções (prompt injection); neutralizar `<`/`>` impede forjar o fim do bloco |
 
 ## Fragilidades conhecidas (honestidade técnica)
 

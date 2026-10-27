@@ -58,7 +58,55 @@ e o plugin notifica; sem regras, tudo vem `allow`.)
 | `title` | Título na notificação de done/error |
 | `parentID` | Presente = subagente → `done` suprimido |
 | `location.directory` | **Ownership check** da deduplicação |
+| `model` | `{id, providerID, variant?}` — candidato para o resumo por IA (quando `summaryModel` não está setado) |
 | `cost`, `tokens` | Disponíveis para enriquecer notificações (roadmap) |
+
+## Payload da Camada 2 (resumo por IA)
+
+Com `summary: "llm"`, o plugin acrescenta dois campos ao payload de **todos**
+os tipos de evento (`question`, `permission`, `done`, `error`):
+
+| Campo | Tipo | Valores | Descrição |
+|---|---|---|---|
+| `summary` | string | — | Corpo final da notificação (o resumo do modelo, ou o texto limpo no fallback) |
+| `summarySource` | string | `llm` \| `heuristic` \| `fallback` \| `none` | De onde veio o corpo: modelo, limpeza determinística (texto curto), fallback por falha/timeout, ou nada |
+
+Regras observadas:
+
+- com `summary: "off"` (default) o payload **não ganha** os campos novos — o
+  `preview` continua sendo o texto bruto cortado em 280 chars, como antes;
+- com `summary: "llm"`, `summary` e `preview` têm o **mesmo conteúdo** — o
+  `preview` continua existindo por compatibilidade com consumidores antigos,
+  mas passa a trazer o resumo;
+- `question` mantém `question`, `header` e `options` **literais** — o resumo
+  nunca substitui os dados acionáveis;
+- `permission` mantém `action` e `resources` literais;
+- `error` usa `data.error.message` do evento `session.execution.failed` como
+  texto de origem (antes usava só a última mensagem do assistente);
+- o Node-RED usa `summary` como corpo **preferencial** e cai no texto antigo
+  (`question`/`preview`) quando ele não vem; o `summarySource` fica no
+  buffer de eventos.
+
+### Requisições de resumo (não são eventos do OpenCode)
+
+O resumo é uma **requisição stateless** ao modelo
+(`ctx.experimental.generate.text`, o mesmo endpoint `/api/experimental/generate`):
+sem sessão, sem tools, sem histórico — por isso não existe risco de loop de
+notificação. A resposta do modelo é sanitizada (tira cercas de código, rótulo
+`Resumo:`, aspas e markdown) e cortada no limite de `summaryMaxChars`.
+
+Medições (OpenCode 2.2.0, provider próprio com um modelo "rotativo"
+compartilhado entre o agente e o resumo):
+
+| Cenário | Latência observada |
+|---|---|
+| prompt curto (~90 chars de entrada) | 4,8 s |
+| prompt de ~800 chars de entrada | 14,6 s |
+| provider sob carga (3 requisições simultâneas) | 32–64 s |
+| texto abaixo de `summaryMinSourceChars` | **0 s** (heurística, sem chamar o modelo) |
+
+A latência é do provider, não do plugin — e a requisição **não é cancelada**
+quando o timeout estoura: a cota continua sendo consumida.
 
 ## APIs correlatas (todas verificadas ao vivo)
 

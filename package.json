@@ -1,7 +1,7 @@
 {
   "name": "notify-opencode",
-  "version": "0.2.2",
-  "description": "Notificações do OpenCode no celular via Node-RED — plugin V2 com gatilhos de pergunta, permissão, conclusão e erro, mais toggle por sessão no TUI.",
+  "version": "0.3.0",
+  "description": "Notificações do OpenCode no celular via Node-RED — plugin V2 com gatilhos de pergunta, permissão, conclusão e erro, toggle por sessão na TUI e resumo opcional do corpo por IA.",
   "type": "module",
   "private": true,
   "engines": {
@@ -11,7 +11,8 @@
     "flow:apply": "node scripts/apply-nodered-flow.mjs",
     "flow:test": "node scripts/test-send-event.mjs",
     "flow:validate": "node scripts/validate-flow.mjs",
-    "test": "node scripts/validate-flow.mjs && node scripts/check-hygiene.mjs"
+    "test:summary": "node scripts/test-summary.mjs",
+    "test": "node scripts/validate-flow.mjs && node scripts/check-hygiene.mjs && node scripts/test-summary.mjs"
   },
   "repository": {
     "type": "git",

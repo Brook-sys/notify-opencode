@@ -6,6 +6,14 @@ destes itens são bem-vindas (veja [CONTRIBUTING](../CONTRIBUTING.md)).
 
 ## Curto prazo
 
+### 0. Resumo do corpo com IA 🤖 ✅ (feito na 0.3.0)
+
+O corpo da notificação passa a ser um resumo gerado por uma requisição
+**stateless** ao modelo (`ctx.experimental.generate.text`), nos quatro tipos
+de evento. Opt-in (`summary: "off"` por padrão), com fallback determinístico
+obrigatório e núcleo puro testado (18 testes no CI). Medições e fragilidades
+em [arquitetura.md](arquitetura.md#camada-2--resumo-do-corpo-por-ia-opt-in).
+
 ### 1. Canal de notificação real 📱 ✅ (feito na 0.2.1)
 
 Entregue via **ntfy.sh** (publicação JSON: título/ícone/prioridade no corpo,
@@ -22,6 +30,11 @@ do plugin com replay ao reconectar + relay de indisponibilidade.
 `session.get()` já expõe `cost`/`tokens` e o stream tem
 `session.usage.updated`/`session.step.ended` com os mesmos campos
 (pesquisa pronta). Meta: `✅ done · $0,012 · 3 min` no corpo da notificação.
+
+> Parcialmente resolvido na 0.3.0 pelo outro lado: o **custo do resumo por IA**
+> não aparece nas stats da sessão (requisição stateless, fora do histórico) —
+> o consumo aparece na fatura do provider, não no OpenCode. Por isso o item
+> continua aberto: falta Bring-your-own-meter para o custo do resumo também.
 
 ### 4. Toggle global e por projeto
 Hoje o toggle é por sessão (default ligado). Adicionar: default **por
